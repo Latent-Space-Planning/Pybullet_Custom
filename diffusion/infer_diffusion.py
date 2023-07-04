@@ -169,12 +169,13 @@ def value_func_and_grad(obstacle_center, link_pos):
     '''
     dist = np.linalg.norm(obstacle_center - link_pos) # **2
     if dist > 0.3:
-        grad = np.zeros_like(link_pos)
+        grad = np.zeros_like(link_pos) # np.exp(-2*(link_pos - obstacle_center)) # 
     else:
         grad = 2*(link_pos - obstacle_center)
+    # grad[2] = 0
     return dist, grad.reshape((3, 1))
 
-def calc_gradients(obstacle_center, traj, client_id, panda, panda_joints):
+def calc_gradients(obstacle_centers, traj, client_id, panda, panda_joints):
     '''Calculate Gradients
     '''
     gradients = np.zeros(traj.shape, dtype=float)
@@ -202,9 +203,16 @@ def calc_gradients(obstacle_center, traj, client_id, panda, panda_joints):
             J_t, J_r = client_id.calculateJacobian(panda, i, list(com_trn), clipped_q.tolist(), np.zeros_like(q).tolist(), np.zeros_like(q).tolist())
             J_t = np.array(J_t)
 
-            value, grad = value_func_and_grad(obstacle_center, np.array(link_pos))# J_t@clipped_q.reshape((9, 1)))
-            if np.linalg.norm(grad) > 0:
-                print(f"Value: {value}, Grad: {grad}")
+            grad = None
+            for k in range(len(obstacle_centers)):
+                if k==0:
+                    value, grad = value_func_and_grad(obstacle_centers[k], np.array(link_pos))# J_t@clipped_q.reshape((9, 1)))
+                else:
+                    _, temp = value_func_and_grad(obstacle_centers[k], np.array(link_pos))
+                    grad += temp
+            grad = grad/len(obstacle_centers)
+            # if np.linalg.norm(grad) > 0:
+            #     print(f"Value: {value}, Grad: {grad}")
             # print("HIIIIIIIIIII")
             net_grad = np.sum(grad * J_t[:, :7], axis=0) # .reshape((traj[0, :, j].shape[0], traj[0, :, j].shape[1]))
             denom = np.linalg.norm(net_grad)
@@ -213,10 +221,10 @@ def calc_gradients(obstacle_center, traj, client_id, panda, panda_joints):
 
             gradients[0, :, j] += net_grad.reshape((traj[0, :, j].shape))/7
     # print(f"Gradients: {gradients}")
-    print(f"Norm of gradient: {np.linalg.norm(gradients)}")
+    print(f"Norm of gradient: {np.linalg.norm(gradients)}\t Max gradient: {np.max(gradients)}")
     return np.clip(gradients, -1, 1)
 
-def infer_guided(denoiser, q0, target, obstacle_center, client_id, panda, panda_joints):
+def infer_guided(denoiser, q0, target, obstacle_centers, client_id, panda, panda_joints):
     '''Finds the trajectory using the denoiser between q0 and target
 
     Parameters:
@@ -265,8 +273,8 @@ def infer_guided(denoiser, q0, target, obstacle_center, client_id, panda, panda_
 
         epsilon = denoiser(X_input, time_in).numpy(force=True)
          
-        epsilon_classifier = calc_gradients(obstacle_center, X_t, client_id, panda, panda_joints)
-        cl_weightage = (t/T) * 0.1 # np.clip((1 - t/T), 0.01, 1) * 0.1
+        epsilon_classifier = calc_gradients(obstacle_centers, X_t, client_id, panda, panda_joints)
+        cl_weightage = np.clip(np.log(1+((t-2)/T)*(np.exp(1) - 1)), 0.005, 1) # np.clip((t/T) * 0.1, 0.001, 1) # np.clip((1 - t/T), 0.01, 1) * 0.1
         
         X_t = (1/np.sqrt(alpha[t-1])) * (X_t - ((1 - alpha[t-1])/(np.sqrt(1 - alpha_bar[t-1]))) * epsilon) + beta[t-1]*z + cl_weightage*epsilon_classifier
         
