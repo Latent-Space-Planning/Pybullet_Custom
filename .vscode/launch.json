@@ -1,0 +1,17 @@
+{
+    // Use IntelliSense to learn about possible attributes.
+    // Hover to view descriptions of existing attributes.
+    // For more information, visit: https://go.microsoft.com/fwlink/?linkid=830387
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Diffusion with classical collision checking",
+            "type": "python",
+            "request": "launch",
+            "program": "7DoF_panda.py",  // tools/rollout_policy.py", // 
+            // "args": ["--self-coll-nn=weights/self_coll_nn", "--scene-coll-nn=weights/scene_coll_nn", "--control-frequency=1"]
+            // "console": "integratedTerminal",
+            // "justMyCode": true
+        }
+    ]
+}

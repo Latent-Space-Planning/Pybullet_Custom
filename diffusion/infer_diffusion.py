@@ -202,6 +202,7 @@ def calc_gradients(obstacle_centers, traj, client_id, panda, panda_joints):
             com_trn = client_id.getLinkState(panda, i, computeForwardKinematics=1)[2]
             J_t, J_r = client_id.calculateJacobian(panda, i, list(com_trn), clipped_q.tolist(), np.zeros_like(q).tolist(), np.zeros_like(q).tolist())
             J_t = np.array(J_t)
+            J_r = np.array(J_r)
 
             grad = None
             for k in range(len(obstacle_centers)):
