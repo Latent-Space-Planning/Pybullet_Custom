@@ -1,0 +1,3 @@
+[submodule "pytorch_kinematics"]
+	path = pytorch_kinematics
+	url = https://github.com/UM-ARM-Lab/pytorch_kinematics.git
