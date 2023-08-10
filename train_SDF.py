@@ -56,7 +56,42 @@ class SDFModel(nn.Module):
     # def forward(self, x):
     #     return self.layers(x)
 
+# Define the Signed Distance Function MLP model
+class SDFModel_min_dist_per_joint(nn.Module):
+    def __init__(self, input_dim, hidden_dim_1, hidden_dim_2, output_dim):
+        super(SDFModel_min_dist_per_joint, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim_1)   # Fully connected layer with 7 input features and 32 output features
+        self.relu = nn.ReLU()         # ReLU activation function
+        self.fc2 = nn.Linear(hidden_dim_1, hidden_dim_2)  # Fully connected layer with 32 input features and 16 output features
+        self.fc3 = nn.Linear(hidden_dim_2, output_dim)  # Fully connected layer with 16 input features and 21 output features
 
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.relu(x)
+        x = self.fc3(x)
+        x = x.view(-1, 7)
+        return x
+    
+# Define the Signed Distance Function MLP model
+class SDFModel_min_dist_overall(nn.Module):
+    def __init__(self, input_dim, hidden_dim_1, hidden_dim_2, output_dim):
+        super(SDFModel_min_dist_overall, self).__init__()
+        self.fc1 = nn.Linear(input_dim, hidden_dim_1)   # Fully connected layer with 7 input features and 32 output features
+        self.relu = nn.ReLU()         # ReLU activation function
+        self.fc2 = nn.Linear(hidden_dim_1, hidden_dim_2)  # Fully connected layer with 32 input features and 16 output features
+        self.fc3 = nn.Linear(hidden_dim_2, output_dim)  # Fully connected layer with 16 input features and 21 output features
+
+    def forward(self, x):
+        x = self.fc1(x)
+        x = self.relu(x)
+        x = self.fc2(x)
+        x = self.relu(x)
+        x = self.fc3(x)
+        # x = x.view(-1, 7)
+        return x
+    
 class SDF_Dataset_Value(Dataset):   #this class handles a single conf in custom pybullet env
     def __init__(self, dists, jnt_states, n_conf = 50000, is_train = True, transform = None):
         # self.root_dir = root_dir
@@ -91,10 +126,11 @@ def train_sdf_fn(args, dataset):
     input_dim = 7    # no of joints  (7)
     hidden_dim_1 = 32   #
     hidden_dim_2 = 16
-    output_dim = 21   # 7*3
+    # output_dim = 21   # 7*3
+    output_dim = 7
  
     #load model architecture 
-    sdf_model = SDFModel(input_dim, hidden_dim_1, hidden_dim_2, output_dim)
+    sdf_model = SDFModel_min_dist_per_joint(input_dim, hidden_dim_1, hidden_dim_2, output_dim)
     sdf_model = sdf_model.to(device)
 
     #-----------------------------------------------------------------------------#
@@ -199,7 +235,7 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
-    sdf_file = "/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/sdf_dists_three_spheres.npy"
+    sdf_file = "/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/sdf_dists_three_spheres_min_distance_per_joint.npy"
     dists = get_dataset(sdf_file)
 
     jnt_states_file = "/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/joint_states.npy"

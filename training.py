@@ -130,7 +130,7 @@ class Trainer_jayaram(object):   #/home2/jayaram.reddy/test_diffusion_planning/l
                 targets = batch[1]
                 loss = self.criterion(outputs, targets)
                 loss = loss / self.gradient_accumulate_every
-                # wandb.log({'loss': loss, 'epoch': epoch_no, 'step no': step}) #, 'batch': t})
+                wandb.log({'loss': loss, 'epoch': epoch_no, 'step no': step}) #, 'batch': t})
                 loss.backward()
 
             self.optimizer.step()
