@@ -287,7 +287,7 @@ if __name__=="__main__":
     device = "cuda" if torch.cuda.is_available() else "cpu"
     traj_len=50
     T = 255
-    model_name = "./diffusion/checkpoints/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
+    model_name = "/home/jayaram/research/research_tracks/table_top_rearragement/global_classifier_guidance_for_7DOF_manipulator/diffuser_ckpts_7dof_mpinets/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
     if not os.path.exists(model_name):
         print("Model does not exist for these parameters. Train a model first.")
         _ = input("Press anything to exit")

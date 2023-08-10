@@ -5,10 +5,20 @@
     "version": "0.2.0",
     "configurations": [
         {
-            "name": "Diffusion with classical collision checking",
+            "name": "7DoF_panda.py",
             "type": "python",
             "request": "launch",
             "program": "7DoF_panda.py",  // tools/rollout_policy.py", // 
+            // "args": ["--self-coll-nn=weights/self_coll_nn", "--scene-coll-nn=weights/scene_coll_nn", "--control-frequency=1"]
+            // "console": "integratedTerminal",
+            // "justMyCode": true
+        },
+
+        {
+            "name": "train_SDF.py",
+            "type": "python",
+            "request": "launch",
+            "program": "/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/train_SDF.py",  // tools/rollout_policy.py", // 
             // "args": ["--self-coll-nn=weights/self_coll_nn", "--scene-coll-nn=weights/scene_coll_nn", "--control-frequency=1"]
             // "console": "integratedTerminal",
             // "justMyCode": true

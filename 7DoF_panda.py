@@ -170,13 +170,13 @@ def generate_collision_course3(client_id):
     obstacle_centers = []
     sphereRadius = 0.08
     colVizshape = client_id.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius, rgbaColor=[1, 1, 0, 1])
-    # colSphereId = client_id.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
+    colSphereId = client_id.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
     obstacle_center = np.array([0.6, -0.10, 0.6])
     obstacle_centers.append(obstacle_center)
     colSph = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=colVizshape, basePosition=obstacle_center)
 
     colVizshape = client_id.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius, rgbaColor=[1, 1, 0, 1])
-    # colSphereId = client_id.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
+    colSphereId = client_id.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
     obstacle_center = np.array([0.55, -0.09, 0.3])
     obstacle_centers.append(obstacle_center)
     colSph = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=colVizshape, basePosition=obstacle_center)
@@ -240,7 +240,7 @@ outViz = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=outVizshape,
 device = "cuda" if torch.cuda.is_available() else "cpu"
 traj_len=50
 T = 255
-model_name = "./diffusion/checkpoints/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
+model_name = "/home/jayaram/research/research_tracks/table_top_rearragement/global_classifier_guidance_for_7DOF_manipulator/diffuser_ckpts_7dof_mpinets/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
 if not os.path.exists(model_name):
     print("Model does not exist for these parameters. Train a model first.")
     _ = input("Press anything to exit")

@@ -8,9 +8,9 @@ import pybullet as p
 
 import sys 
 
-sys.path.append('/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/codes/Vishal/Structured_Bullet/diffusion/Models')
-sys.path.append('/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/codes/Vishal/Structured_Bullet/diffusion/priors')
-sys.path.append('/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/codes/Vishal/Structured_Bullet/diffusion/scripts')
+sys.path.append('/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom')
+# sys.path.append('/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/diffusion/priors')
+# sys.path.append('/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/diffusion/scripts')
 
 from diffusion.scripts.diffusion_functions import *
 from diffusion.priors.bezier_curve_2d import *
@@ -33,7 +33,7 @@ def gen_trajectory(conditioning=False, start=np.zeros(7, ), goal=np.zeros(7, ), 
     # --------------------------------------------------- #
 
     #model_name = "Model_weights/straight_line/" + "TemporalUNetModel_Conditioned_T" + str(T) + "_N" + str(traj_len)
-    model_name = "./diffusion/checkpoints/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
+    model_name = "/home/jayaram/research/research_tracks/table_top_rearragement/global_classifier_guidance_for_7DOF_manipulator/diffuser_ckpts_7dof_mpinets/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
 
     if not os.path.exists(model_name):
         print("Model does not exist for these parameters. Train a model first.")
@@ -94,7 +94,7 @@ def gen_trajectory(conditioning=False, start=np.zeros(7, ), goal=np.zeros(7, ), 
         # os.system("cls")
         print(f"\rDenoised to {t-1} steps", end="")
 
-    np.save(f"/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/codes/Vishal/7DOF-Diffusion/results/7dof/generated_trajectories/reverse_trajectory_st_gl_fix_val_{traj_count}.npy", reverse_diff_traj)
+    np.save(f"/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/results/7dof/generated_trajectories/reverse_trajectory_st_gl_fix_val_{traj_count}.npy", reverse_diff_traj)
 
 def infer(denoiser, q0, target):
     '''Finds the trajectory using the denoiser between q0 and target
@@ -291,7 +291,7 @@ def infer_guided(denoiser, q0, target, obstacle_centers, client_id, panda, panda
 
 if __name__=='__main__':
     for i in range(2, 12):
-        path_to_dataset = '/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/datasets/nvidia_MPI/mpinets_hybrid_training_data/val/val.hdf5'
+        path_to_dataset = '/home/jayaram/research/research_tracks/table_top_rearragement/global_classifier_guidance_for_7DOF_manipulator/datasets/mpinets_hybrid_training_data/val/val.hdf5'
         f = h5py.File(path_to_dataset, 'r')
         traj = f['hybrid_solutions'][i, :, :]
         start_traj = traj[0, :]
