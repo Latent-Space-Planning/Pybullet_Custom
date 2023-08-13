@@ -22,6 +22,16 @@
             // "args": ["--self-coll-nn=weights/self_coll_nn", "--scene-coll-nn=weights/scene_coll_nn", "--control-frequency=1"]
             // "console": "integratedTerminal",
             // "justMyCode": true
+        },
+
+        {
+            "name": "/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/generate_SDF_dataset_gjk.py",
+            "type": "python",
+            "request": "launch",
+            "program": "/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/generate_SDF_dataset_gjk.py",  // tools/rollout_policy.py", // 
+            // "args": ["--self-coll-nn=weights/self_coll_nn", "--scene-coll-nn=weights/scene_coll_nn", "--control-frequency=1"]
+            // "console": "integratedTerminal",
+            // "justMyCode": true
         }
     ]
 }

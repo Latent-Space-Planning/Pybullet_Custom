@@ -27,12 +27,13 @@ ID = 'sdf_training single scene' + str(number)
 
 # Define the Signed Distance Function MLP model
 class SDFModel(nn.Module):
-    def __init__(self, input_dim, hidden_dim_1, hidden_dim_2, output_dim):
+    def __init__(self, input_dim, hidden_dim_1, hidden_dim_2, hidden_dim_3, output_dim):
         super(SDFModel, self).__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim_1)   # Fully connected layer with 7 input features and 32 output features
         self.relu = nn.ReLU()         # ReLU activation function
-        self.fc2 = nn.Linear(hidden_dim_1, hidden_dim_2)  # Fully connected layer with 32 input features and 16 output features
-        self.fc3 = nn.Linear(hidden_dim_2, output_dim)  # Fully connected layer with 16 input features and 21 output features
+        self.fc2 = nn.Linear(hidden_dim_1, hidden_dim_2)  # Fully connected layer with 32 input features and 128 output features
+        self.fc3 = nn.Linear(hidden_dim_2, hidden_dim_3)  # Fully connected layer with 128 input features and 64 output features
+        self.fc4 = nn.Linear(hidden_dim_3, output_dim)  # Fully connected layer with 64 input features and 21 output features
 
     def forward(self, x):
         x = self.fc1(x)
@@ -40,7 +41,10 @@ class SDFModel(nn.Module):
         x = self.fc2(x)
         x = self.relu(x)
         x = self.fc3(x)
-        x = x.view(-1, 7, 3)
+        x = self.relu(x)
+        x = self.fc4(x)
+        print(x.requires_grad)
+        x = torch.view(-1, 7, 3)   # comment this during inference
         return x
     
     # def __init__(self, input_dim, hidden_dim, output_dim):
@@ -58,12 +62,13 @@ class SDFModel(nn.Module):
 
 # Define the Signed Distance Function MLP model
 class SDFModel_min_dist_per_joint(nn.Module):
-    def __init__(self, input_dim, hidden_dim_1, hidden_dim_2, output_dim):
+    def __init__(self, input_dim, hidden_dim_1, hidden_dim_2, hidden_dim_3, output_dim):
         super(SDFModel_min_dist_per_joint, self).__init__()
         self.fc1 = nn.Linear(input_dim, hidden_dim_1)   # Fully connected layer with 7 input features and 32 output features
         self.relu = nn.ReLU()         # ReLU activation function
-        self.fc2 = nn.Linear(hidden_dim_1, hidden_dim_2)  # Fully connected layer with 32 input features and 16 output features
-        self.fc3 = nn.Linear(hidden_dim_2, output_dim)  # Fully connected layer with 16 input features and 21 output features
+        self.fc2 = nn.Linear(hidden_dim_1, hidden_dim_2)  # Fully connected layer with 32 input features and 128 output features
+        self.fc3 = nn.Linear(hidden_dim_2, hidden_dim_3)  # Fully connected layer with 128 input features and 32 output features
+        self.fc4 = nn.Linear(hidden_dim_3, output_dim)    # Fully connected layer with 32 input features and 7 output features
 
     def forward(self, x):
         x = self.fc1(x)
@@ -71,7 +76,9 @@ class SDFModel_min_dist_per_joint(nn.Module):
         x = self.fc2(x)
         x = self.relu(x)
         x = self.fc3(x)
-        x = x.view(-1, 7)
+        x = self.relu(x)
+        x = self.fc4(x)
+        # x = x.view(-1, 7)
         return x
     
 # Define the Signed Distance Function MLP model
@@ -125,12 +132,15 @@ def train_sdf_fn(args, dataset):
     # change action dim to 2 later
     input_dim = 7    # no of joints  (7)
     hidden_dim_1 = 32   #
-    hidden_dim_2 = 16
+    hidden_dim_2 = 128
+    hidden_dim_3 = 64
     # output_dim = 21   # 7*3
-    output_dim = 7
+    # output_dim = 21
+    output_dim = 7  # (for sdf fn per joint)
  
     #load model architecture 
-    sdf_model = SDFModel_min_dist_per_joint(input_dim, hidden_dim_1, hidden_dim_2, output_dim)
+    # sdf_model = SDFModel_min_dist_per_joint(input_dim, hidden_dim_1, hidden_dim_2, hidden_dim_3, output_dim)
+    sdf_model = SDFModel(input_dim, hidden_dim_1, hidden_dim_2, hidden_dim_3, output_dim)
     sdf_model = sdf_model.to(device)
 
     #-----------------------------------------------------------------------------#

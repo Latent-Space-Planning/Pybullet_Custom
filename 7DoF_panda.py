@@ -212,7 +212,7 @@ def generate_collision_course4(client_id):
 
     colVizshape = client_id.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius, rgbaColor=[1, 1, 0, 1])
     # colSphereId = client_id.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
-    obstacle_center = np.array([0.4, -0.16, 0.4])
+    obstacle_center = np.array([0.5, -0.36, 0.4])
     obstacle_centers.append(obstacle_center)
     colSph = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=colVizshape, basePosition=obstacle_center)
 

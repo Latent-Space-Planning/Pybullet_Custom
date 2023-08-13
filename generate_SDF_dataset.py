@@ -11,6 +11,7 @@ import os
 from diffusion.Models.temporalunet import TemporalUNet
 from diffusion.infer_diffusion import infer, infer_guided, value_func_and_grad
 from train_SDF import SDFModel
+from gjk_trajopt_pybullet import RobotEnvironment
 
 lower_lims = np.array([-2.8973000049591064, -1.7627999782562256, -2.8973000049591064, -3.0717999935150146, -2.8973000049591064, -0.017500000074505806, -2.8973000049591064])
 upper_lims = np.array([2.8973000049591064, 1.7627999782562256, 2.8973000049591064, -0.0697999969124794, 2.8973000049591064, 3.752500057220459, 2.8973000049591064])
@@ -202,6 +203,8 @@ dists = np.zeros((trajectory.shape[0], trajectory.shape[1], len(obstacle_centers
 for conf_no in range(len(trajectory)):  #50 for mpinets
     for l, joint_ind in enumerate(panda_joints):
         client_id.resetJointState(panda, joint_ind, trajectory[conf_no, l])
+
+    
     numJoints = p.getNumJoints(panda)  # 12 but consider only fisrt 7 joints
     for joint_no in range(7):# numJoints):
         link_pos = client_id.getLinkState(panda, joint_no, computeForwardKinematics=1)[0]
