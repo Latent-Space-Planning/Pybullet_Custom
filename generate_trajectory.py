@@ -36,8 +36,9 @@ _ = denoiser.to(device)
 # start_joint = env.inverse_kinematics(start, start_orientation)
 goal_joint = env.inverse_kinematics(goal, goal_orientation)
 
-start_joint = np.array([0.7, -0.2, 0.3, -1.8, 0., 2.1, 1.57, 0., 0.])
-#goal_joint = np.array([-0.2, -0.2, -0.7, -1.8, 0., 2.1, 1.57, 0., 0.])
+traj = np.load("traj.npy")
+start_joint = np.append(traj[0, :], [0., 0.]) #np.array([0.7, -0.2, 0.3, -1.8, 0., 2.1, 1.57, 0., 0.])
+goal_joint = np.append(traj[-1, :], [0., 0.]) #np.array([-0.2, -0.2, -0.7, -1.8, 0., 2.1, 1.57, 0., 0.])
 
 os.system("clear")
 print("Environment and Model Loaded \n")

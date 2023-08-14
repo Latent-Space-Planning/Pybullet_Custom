@@ -34,7 +34,9 @@ class TrajOpt:
         
         # Define joint limit constraints:
         joint_limit_constraints = [{'type': 'ineq', 'fun': self.lower_joint_inequality_constraint},
-                                       {'type': 'ineq', 'fun': self.upper_joint_inequality_constraint}]
+                                   {'type': 'ineq', 'fun': self.upper_joint_inequality_constraint},
+                                   {'type': 'eq', 'fun': self.start_constraint, 'args': (start_joints,)},
+                                   {'type': 'eq', 'fun': self.goal_constraint, 'args': (goal_pose,)}]
 
         # Initialize the true improve as zero
         prev_true_improve = 0
@@ -108,7 +110,7 @@ class TrajOpt:
     
     def objective(self, x, mu, start_joints, goal_pose):
 
-        return self.length_objective(x) + self.get_constraint_cost(x, mu, start_joints, goal_pose)
+        return self.length_objective(x) #+ self.get_constraint_cost(x, mu, start_joints, goal_pose)
     
     def length_objective(self, x):
 
@@ -134,3 +136,13 @@ class TrajOpt:
     def upper_joint_inequality_constraint(self, x):
 
         return np.repeat([self.env.joint_upper_limits], self.traj_len, axis = 0).flatten() - (self.theta + x)
+    
+    def start_constraint(self, x, start_joints):
+
+        new_joints = self.theta + x
+        return new_joints[:self.num_joints] - start_joints
+    
+    def goal_constraint(self, x, goal_pose):
+
+        new_joints = self.theta + x
+        return self.env.forward_kinematics(new_joints[-self.num_joints:]) - self.env.pose_to_transformation(goal_pose)

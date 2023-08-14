@@ -1,3 +1,4 @@
 diffusion_model/model_weights/*
 diffusion/__pycache__/*
 Assets/*
+openGJK/*

@@ -4,10 +4,12 @@ import pybullet_data
 
 import numpy as np
 import time
+import re
+import os
 
 class RobotEnvironment:
 
-    def __init__(self, gui = True, timestep = 1/480):
+    def __init__(self, gui = True, timestep = 1/480, manipulator = True):
 
         self.client_id = bc.BulletClient(p.GUI if gui else p.DIRECT)            # Initialize the bullet client
         self.client_id.setAdditionalSearchPath(pybullet_data.getDataPath())     # Add pybullet's data package to path
@@ -16,6 +18,17 @@ class RobotEnvironment:
 
         p.setAdditionalSearchPath(pybullet_data.getDataPath())      # Add pybullet's data package to path   
 
+        self.colors = {'blue': np.array([78, 121, 167]) / 255.0,  # blue
+                       'green': np.array([89, 161, 79]) / 255.0,  # green
+                       'brown': np.array([156, 117, 95]) / 255.0,  # brown
+                       'orange': np.array([242, 142, 43]) / 255.0,  # orange
+                       'yellow': np.array([237, 201, 72]) / 255.0,  # yellow
+                       'gray': np.array([186, 176, 172]) / 255.0,  # gray
+                       'red': np.array([255, 87, 89]) / 255.0,  # red
+                       'purple': np.array([176, 122, 161]) / 255.0,  # purple
+                       'cyan': np.array([118, 183, 178]) / 255.0,  # cyan
+                       'pink': np.array([255, 157, 167]) / 255.0}  # pink
+        
         target = self.client_id.getDebugVisualizerCamera()[11]          # Get cartesian coordinates of the camera's focus
         self.client_id.resetDebugVisualizerCamera(                      # Reset initial camera position
             cameraDistance=1.5,
@@ -38,7 +51,8 @@ class RobotEnvironment:
             angularDamping=0.5,
         )
 
-        self.initialize_manipulator()
+        if manipulator:
+            self.initialize_manipulator()
 
     def initialize_manipulator(self, urdf_file = "franka_panda/panda.urdf", base_position = (0, 0, 0)):
 
@@ -74,7 +88,97 @@ class RobotEnvironment:
                                            166*(np.pi/180),
                                            215*(np.pi/180),
                                            166*(np.pi/180)])
+        
+        links_folder_path = '/home/failedmesh/miniconda3/lib/python3.10/site-packages/pybullet_data/franka_panda/meshes/collision/'
+        try:
+            link_file_names = os.listdir(links_folder_path)
+        except OSError as e:
+            print(f"Error reading files in folder: {e}")
+       
+        self.link_meshes = {}
+        self.link_dimensions = {}
+        self.link_centers = {}
 
+        self.link_index_to_name = ['link0', 'link1', 'link2', 'link3', 'link4', 'link5', 'link6', 'link7',
+                                   'hand', 'finger', 'finger', 'finger', 'finger'] 
+
+        for file_name in link_file_names:
+
+            if file_name[-4:] == ".obj":
+                vertices = []    
+                link_name = file_name[:-4]
+                with open(links_folder_path + file_name, 'r') as f:
+                    for line in f:
+                        line = line.strip()
+                        if line.startswith('v '):
+                            vertex = re.split(r'\s+', line)[1:4]
+                            vertex = np.array([float(coord) for coord in vertex])
+                            vertices.append(vertex)
+                self.link_meshes[link_name] = np.array(vertices)
+                max_point = np.max(self.link_meshes[link_name], axis = 0)
+                min_point = np.min(self.link_meshes[link_name], axis = 0)
+                self.link_dimensions[link_name] = max_point - min_point
+                self.link_centers[link_name] = self.link_dimensions[link_name]/2 + min_point
+
+    def draw_link_bounding_boxes(self):
+
+        self.link_poses = []
+        self.link_bounding_vertices = []
+        
+        self.link_bounding_objs = []
+
+        for link_index in range(0, 11):     # The 12th link (i.e. 11th index) is the grasp target and is not needed   
+                
+            if link_index not in [8, 9]:    
+
+                link_name = self.link_index_to_name[link_index+1]
+
+                l, b, h = self.link_dimensions[link_name][0], self.link_dimensions[link_name][1], self.link_dimensions[link_name][2]
+
+                if link_index == 7:
+                    frame_pos, _ = self.client_id.getLinkState(self.manipulator, 7)[4:6]
+                    _, frame_ori = self.client_id.getLinkState(self.manipulator, 10)[4:6]
+                elif link_index != -1:
+                    frame_pos, frame_ori = self.client_id.getLinkState(self.manipulator, link_index)[4:6]
+                else:
+                    frame_pos, frame_ori = self.client_id.getBasePositionAndOrientation(self.manipulator)
+                world_transform = self.pose_to_transformation(np.array([*frame_pos, *frame_ori]))
+
+                link_dimensions = self.link_dimensions[link_name].copy()
+                if link_index == 10:
+                    link_dimensions[1] *= 4
+
+                world_link_center = (world_transform @ np.vstack((np.expand_dims(self.link_centers[link_name], 1), 1)))[:-1, 0]
+
+                vertices = np.array([[-l/2, -b/2, -h/2],
+                                    [ l/2, -b/2, -h/2],
+                                    [ l/2,  b/2, -h/2],
+                                    [-l/2,  b/2, -h/2],
+                                    [-l/2, -b/2,  h/2],
+                                    [ l/2, -b/2,  h/2],
+                                    [ l/2,  b/2,  h/2],
+                                    [-l/2,  b/2,  h/2]])
+                vertices = vertices + np.array([self.link_centers[link_name]])
+                vertices = world_transform @ np.vstack((vertices.T, np.ones(8)))
+                self.link_bounding_vertices.append(vertices.T[:, :-1])
+
+                self.link_poses.append(np.array([*world_link_center, *frame_ori]))
+                
+                vuid = self.client_id.createVisualShape(p.GEOM_BOX, 
+                                        halfExtents = link_dimensions/2,
+                                        rgbaColor = np.hstack([self.colors['red'], np.array([1.0])]))
+                
+                obj_id = self.client_id.createMultiBody(baseVisualShapeIndex = vuid, 
+                                                        basePosition = world_link_center, 
+                                                        baseOrientation = frame_ori)
+                
+                self.link_bounding_objs.append(obj_id)
+    
+    def clear_bounding_boxes(self):
+
+        for obj_id in self.link_bounding_objs:
+            self.client_id.removeBody(obj_id)
+    
     def get_joint_positions(self):
 
         return np.array([self.client_id.getJointState(self.manipulator, i)[0] for i in self.joints])
@@ -107,6 +211,20 @@ class RobotEnvironment:
                         [np.sin(q) * np.sin(alpha), np.cos(q) * np.sin(alpha), np.cos(alpha), np.cos(alpha) * d],
                         [0, 0, 0, 1]])
 
+    def draw_frame(self, transform, scale_factor = 0.2):
+
+        unit_axes_world = np.array([[scale_factor, 0, 0], 
+                                    [0, scale_factor, 0], 
+                                    [0, 0, scale_factor],
+                                    [1, 1, 1]])
+        axis_points = ((transform @ unit_axes_world)[:3, :]).T
+        axis_center = transform[:3, 3]
+
+        self.client_id.addUserDebugLine(axis_center, axis_points[0], self.colors['red'], lineWidth = 4)
+        self.client_id.addUserDebugLine(axis_center, axis_points[1], self.colors['green'], lineWidth = 4)
+        self.client_id.addUserDebugLine(axis_center, axis_points[2], self.colors['blue'], lineWidth = 4)
+        
+    
     def forward_kinematics(self, joint_angles):
 
         T_EE = np.identity(4)
@@ -161,7 +279,7 @@ class RobotEnvironment:
         pos = pose[:3]
         quat = pose[3:]
 
-        rotation_matrix = self.get_rotation_matrix(quat)
+        rotation_matrix = self.quaternion_to_rotation_matrix(quat)
 
         transform = np.zeros((4, 4))
         transform[:3, :3] = rotation_matrix.copy()
@@ -170,11 +288,38 @@ class RobotEnvironment:
 
         return transform
 
-    def get_rotation_matrix(self, quat):
+    def euler_to_rotation_matrix(yaw, pitch, roll):
+        
+        Rz = np.array([[np.cos(yaw), -np.sin(yaw), 0],
+                    [np.sin(yaw), np.cos(yaw), 0],
+                    [0, 0, 1]])
 
+        Ry = np.array([[np.cos(pitch), 0, np.sin(pitch)],
+                    [0, 1, 0],
+                    [-np.sin(pitch), 0, np.cos(pitch)]])
+
+        Rx = np.array([[1, 0, 0],
+                    [0, np.cos(roll), -np.sin(roll)],
+                    [0, np.sin(roll), np.cos(roll)]])
+
+        R = Rz @ (Ry @ Rx)
+        
+        return R
+    
+    def quaternion_to_rotation_matrix(self, quat):
+        """
+        Convert a quaternion to a rotation matrix.
+        
+        :param q: Quaternion [w, x, y, z]
+        :return: 3x3 rotation matrix
+        """
+        # w, x, y, z = quat
+        # rotation_matrix = np.array([[1 - 2*y**2 - 2*z**2,  2*x*y - 2*z*w,        2*x*z + 2*y*w],
+        #                             [2*x*y + 2*z*w,        1 - 2*x**2 - 2*z**2,  2*y*z - 2*x*w],
+        #                             [2*x*z - 2*y*w,        2*y*z + 2*x*w,        1 - 2*x**2 - 2*y**2]])
+        
         mat = np.array(self.client_id.getMatrixFromQuaternion(quat))
         rotation_matrix = np.reshape(mat, (3, 3))
-        #rotation_matrix = np.concatenate([[mat[:3]], [mat[3:6]], [mat[6:9]]], axis = 0)
 
         return rotation_matrix
         
