@@ -8,9 +8,7 @@ import numpy as np
 import torch
 import os
 from diffusion.Models.temporalunet import TemporalUNet
-from diffusion.infer_diffusion import infer, infer_guided
-sys.path.append('/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/Latent_Space_Organization/Mpinet_Environment/')
-
+from diffusion.infer_diffusion import infer, infer_guided, infer_guided_batch
 
 gui =True
 timestep = 1/480
@@ -224,8 +222,36 @@ def generate_collision_course4(client_id):
 
     return obstacle_centers, q0, qTarget, st_pos, end_pos
 
+def generate_collision_course_gjk(client_id):
+    obstacle_centers = []
+    sphereRadius = 0.06
+    colVizshape = client_id.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius, rgbaColor=[1, 1, 0, 1])
+    # colSphereId = client_id.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
+    obstacle_center = np.array([0.6, -0.10, 0.7])
+    obstacle_centers.append(obstacle_center)
+    colSph = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=colVizshape, basePosition=obstacle_center)
 
-obstacle_centers, q0, qTarget, st_pos, end_pos = generate_collision_course4(client_id=client_id)
+    colVizshape = client_id.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius, rgbaColor=[1, 1, 0, 1])
+    # colSphereId = client_id.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
+    obstacle_center = np.array([0.58, -0.09, 0.3])
+    obstacle_centers.append(obstacle_center)
+    colSph = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=colVizshape, basePosition=obstacle_center)
+
+    colVizshape = client_id.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius, rgbaColor=[1, 1, 0, 1])
+    # colSphereId = client_id.createCollisionShape(p.GEOM_SPHERE, radius=sphereRadius)
+    obstacle_center = np.array([0.4, -0.36, 0.4])
+    obstacle_centers.append(obstacle_center)
+    colSph = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=colVizshape, basePosition=obstacle_center)
+
+    q0 = np.array([-0.0493874, 1.2605693, 0.36301115, -0.26907736, -0.2328229, 1.1613771, -1.6480199 ]) 
+    qTarget = np.array([-1.5038756, 0.9193187, 1.8278371, -1.4488376, -1.1391141, 1.2231112, -0.9670128])
+
+    st_pos = np.array([0.75024617,  0.01952344,  0.32572699])
+    end_pos = np.array([0.53903937, -0.27098262,  0.58423716])
+
+    return obstacle_centers, q0, qTarget, st_pos, end_pos
+
+obstacle_centers, q0, qTarget, st_pos, end_pos = generate_collision_course_gjk(client_id=client_id)
 
 sphereRadius = 0.05
 inVizshape = client_id.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius, rgbaColor=[0, 1, 1, 1])
@@ -274,24 +300,42 @@ print("Robot info ended!!!!")
 
 st_time = time.time()
 # trajectory = infer(denoiser, q0, qTarget)
-trajectory = infer_guided(denoiser, q0, qTarget, obstacle_centers, client_id, panda, panda_joints)
+# trajectory = infer_guided(denoiser, q0, qTarget, obstacle_centers, client_id, panda, panda_joints)
+trajectory_batch = infer_guided_batch(denoiser, q0, qTarget, obstacle_centers, client_id, panda, panda_joints)     #(B, 50, 7)
 end_time = time.time()
 print("-"*10)
 print(f"Total Inference Time: {end_time - st_time} seconds")
 print("-"*10)
 
-for i, joint_ind in enumerate(panda_joints):
-    client_id.resetJointState(panda, joint_ind, q0[i])
+for b in range(trajectory_batch.shape[0]):
+    for i, joint_ind in enumerate(panda_joints):    #reset initial joint state 
+        client_id.resetJointState(panda, joint_ind, q0[i])
 
-sleep(5)
-for i in range(len(trajectory)):
-    sleep(0.4)
-    current_joints = np.array([client_id.getJointState(panda, i)[0] for i in panda_joints])
-    target_joints = trajectory[i]
-    print(f"Current Joints: {current_joints}")
-    print(f"Target Joints: {target_joints}")
-    print(f"Itr number: {i}")
-    move_joints(client_id, panda, panda_joints, target_joints)
-    client_id.stepSimulation()
+    sleep(2)
+    for i in range(len(trajectory_batch[b])):
+        sleep(0.4)
+        current_joints = np.array([client_id.getJointState(panda, j)[0] for j in panda_joints])
+        target_joints = trajectory_batch[b][i]
+        print(f"Current Joints: {current_joints}")
+        print(f"Target Joints: {target_joints}")
+        print(f"Itr number: {i}")
+        move_joints(client_id, panda, panda_joints, target_joints)
+        client_id.stepSimulation()
 
-sleep(100)
+    sleep(2)
+
+# for i, joint_ind in enumerate(panda_joints):    #reset initial joint state 
+#     client_id.resetJointState(panda, joint_ind, q0[i])
+
+# sleep(5)
+# for j in range(len(trajectory)):
+#     sleep(0.4)
+#     current_joints = np.array([client_id.getJointState(panda, i)[0] for i in panda_joints])
+#     target_joints = trajectory[j]
+#     print(f"Current Joints: {current_joints}")
+#     print(f"Target Joints: {target_joints}")
+#     print(f"Itr number: {j}")
+#     move_joints(client_id, panda, panda_joints, target_joints)
+#     client_id.stepSimulation()
+
+# sleep(100)

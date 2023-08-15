@@ -44,7 +44,7 @@ class SDFModel(nn.Module):
         x = self.relu(x)
         x = self.fc4(x)
         print(x.requires_grad)
-        x = torch.view(-1, 7, 3)   # comment this during inference
+        # x = torch.view(-1, 7, 3)   # comment this during inference
         return x
     
     # def __init__(self, input_dim, hidden_dim, output_dim):
