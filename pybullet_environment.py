@@ -6,6 +6,7 @@ import numpy as np
 import time
 import re
 import os
+import torch
 
 class RobotEnvironment:
 
@@ -100,7 +101,7 @@ class RobotEnvironment:
         self.link_centers = {}
 
         self.link_index_to_name = ['link0', 'link1', 'link2', 'link3', 'link4', 'link5', 'link6', 'link7',
-                                   'hand', 'finger', 'finger', 'finger', 'finger'] 
+                                   'hand', 'finger', 'finger', 'finger', 'finger']
 
         for file_name in link_file_names:
 
@@ -119,7 +120,7 @@ class RobotEnvironment:
                 min_point = np.min(self.link_meshes[link_name], axis = 0)
                 self.link_dimensions[link_name] = max_point - min_point
                 self.link_centers[link_name] = self.link_dimensions[link_name]/2 + min_point
-
+    
     def draw_link_bounding_boxes(self):
 
         self.link_poses = []
@@ -129,50 +130,50 @@ class RobotEnvironment:
 
         for link_index in range(0, 11):     # The 12th link (i.e. 11th index) is the grasp target and is not needed   
                 
-            if link_index not in [8, 9]:    
+            # if link_index not in [8, 9]:    
 
-                link_name = self.link_index_to_name[link_index+1]
+                # link_name = self.link_index_to_name[link_index+1]
 
-                l, b, h = self.link_dimensions[link_name][0], self.link_dimensions[link_name][1], self.link_dimensions[link_name][2]
+                # l, b, h = self.link_dimensions[link_name][0], self.link_dimensions[link_name][1], self.link_dimensions[link_name][2]
 
-                if link_index == 7:
-                    frame_pos, _ = self.client_id.getLinkState(self.manipulator, 7)[4:6]
-                    _, frame_ori = self.client_id.getLinkState(self.manipulator, 10)[4:6]
-                elif link_index != -1:
-                    frame_pos, frame_ori = self.client_id.getLinkState(self.manipulator, link_index)[4:6]
-                else:
-                    frame_pos, frame_ori = self.client_id.getBasePositionAndOrientation(self.manipulator)
-                world_transform = self.pose_to_transformation(np.array([*frame_pos, *frame_ori]))
+                # if link_index == 7:
+                #     frame_pos, _ = self.client_id.getLinkState(self.manipulator, 7)[4:6]
+                #     _, frame_ori = self.client_id.getLinkState(self.manipulator, 10)[4:6]
+                # elif link_index != -1:
+                #     frame_pos, frame_ori = self.client_id.getLinkState(self.manipulator, link_index)[4:6]
+                # else:
+                #     frame_pos, frame_ori = self.client_id.getBasePositionAndOrientation(self.manipulator)
+                # world_transform = self.pose_to_transformation(np.array([*frame_pos, *frame_ori]))
 
-                link_dimensions = self.link_dimensions[link_name].copy()
-                if link_index == 10:
-                    link_dimensions[1] *= 4
+                # link_dimensions = self.link_dimensions[link_name].copy()
+                # if link_index == 10:
+                #     link_dimensions[1] *= 4
 
-                world_link_center = (world_transform @ np.vstack((np.expand_dims(self.link_centers[link_name], 1), 1)))[:-1, 0]
+                # world_link_center = (world_transform @ np.vstack((np.expand_dims(self.link_centers[link_name], 1), 1)))[:-1, 0]
 
-                vertices = np.array([[-l/2, -b/2, -h/2],
-                                    [ l/2, -b/2, -h/2],
-                                    [ l/2,  b/2, -h/2],
-                                    [-l/2,  b/2, -h/2],
-                                    [-l/2, -b/2,  h/2],
-                                    [ l/2, -b/2,  h/2],
-                                    [ l/2,  b/2,  h/2],
-                                    [-l/2,  b/2,  h/2]])
-                vertices = vertices + np.array([self.link_centers[link_name]])
-                vertices = world_transform @ np.vstack((vertices.T, np.ones(8)))
-                self.link_bounding_vertices.append(vertices.T[:, :-1])
+            vertices = np.array([[-l/2, -b/2, -h/2],
+                                [ l/2, -b/2, -h/2],
+                                [ l/2,  b/2, -h/2],
+                                [-l/2,  b/2, -h/2],
+                                [-l/2, -b/2,  h/2],
+                                [ l/2, -b/2,  h/2],
+                                [ l/2,  b/2,  h/2],
+                                [-l/2,  b/2,  h/2]])
+            vertices = vertices + np.array([self.link_centers[link_name]])
+            vertices = world_transform @ np.vstack((vertices.T, np.ones(8)))
+            self.link_bounding_vertices.append(vertices.T[:, :-1])
 
-                self.link_poses.append(np.array([*world_link_center, *frame_ori]))
-                
-                vuid = self.client_id.createVisualShape(p.GEOM_BOX, 
-                                        halfExtents = link_dimensions/2,
-                                        rgbaColor = np.hstack([self.colors['red'], np.array([1.0])]))
-                
-                obj_id = self.client_id.createMultiBody(baseVisualShapeIndex = vuid, 
-                                                        basePosition = world_link_center, 
-                                                        baseOrientation = frame_ori)
-                
-                self.link_bounding_objs.append(obj_id)
+            self.link_poses.append(np.array([*world_link_center, *frame_ori]))
+            
+            vuid = self.client_id.createVisualShape(p.GEOM_BOX, 
+                                    halfExtents = link_dimensions/2,
+                                    rgbaColor = np.hstack([self.colors['red'], np.array([1.0])]))
+            
+            obj_id = self.client_id.createMultiBody(baseVisualShapeIndex = vuid, 
+                                                    basePosition = world_link_center, 
+                                                    baseOrientation = frame_ori)
+            
+            self.link_bounding_objs.append(obj_id)
     
     def clear_bounding_boxes(self):
 
@@ -220,10 +221,38 @@ class RobotEnvironment:
         axis_points = ((transform @ unit_axes_world)[:3, :]).T
         axis_center = transform[:3, 3]
 
-        self.client_id.addUserDebugLine(axis_center, axis_points[0], self.colors['red'], lineWidth = 4)
-        self.client_id.addUserDebugLine(axis_center, axis_points[1], self.colors['green'], lineWidth = 4)
-        self.client_id.addUserDebugLine(axis_center, axis_points[2], self.colors['blue'], lineWidth = 4)
+        l1 = self.client_id.addUserDebugLine(axis_center, axis_points[0], self.colors['red'], lineWidth = 4)
+        l2 = self.client_id.addUserDebugLine(axis_center, axis_points[1], self.colors['green'], lineWidth = 4)
+        l3 = self.client_id.addUserDebugLine(axis_center, axis_points[2], self.colors['blue'], lineWidth = 4)
+
+        frame_id = [l1, l2, l3]
+
+        return frame_id[:]
+    
+    def remove_frame(self, frame_id):
+
+        for id in frame_id:
+            self.client_id.removeUserDebugItem(id)
         
+    def inverse_of_transform(self, matrix):
+
+        # Extract the rotation part and translation part of the matrix
+        rotation_part = matrix[:3, :3]
+        translation_part = matrix[:3, 3]
+        
+        # Calculate the inverse of the rotation part
+        inverse_rotation = np.linalg.inv(rotation_part)
+        
+        # Calculate the new translation by applying the inverse rotation
+        inverse_translation = -inverse_rotation.dot(translation_part)
+        
+        # Create the inverse transformation matrix
+        inverse_matrix = np.zeros_like(matrix)
+        inverse_matrix[:3, :3] = inverse_rotation
+        inverse_matrix[:3, 3] = inverse_translation
+        inverse_matrix[3, 3] = 1.0
+        
+        return inverse_matrix.copy()
     
     def forward_kinematics(self, joint_angles):
 
@@ -323,6 +352,37 @@ class RobotEnvironment:
 
         return rotation_matrix
         
+    def rotation_matrix_to_quaternion(self, R):
+        
+        trace = np.trace(R)
+
+        if trace > 0:
+            S = np.sqrt(trace + 1.0) * 2
+            qw = 0.25 * S
+            qx = (R[2, 1] - R[1, 2]) / S
+            qy = (R[0, 2] - R[2, 0]) / S
+            qz = (R[1, 0] - R[0, 1]) / S
+        elif (R[0, 0] > R[1, 1]) and (R[0, 0] > R[2, 2]):
+            S = np.sqrt(1.0 + R[0, 0] - R[1, 1] - R[2, 2]) * 2
+            qw = (R[2, 1] - R[1, 2]) / S
+            qx = 0.25 * S
+            qy = (R[0, 1] + R[1, 0]) / S
+            qz = (R[0, 2] + R[2, 0]) / S
+        elif R[1, 1] > R[2, 2]:
+            S = np.sqrt(1.0 + R[1, 1] - R[0, 0] - R[2, 2]) * 2
+            qw = (R[0, 2] - R[2, 0]) / S
+            qx = (R[0, 1] + R[1, 0]) / S
+            qy = 0.25 * S
+            qz = (R[1, 2] + R[2, 1]) / S
+        else:
+            S = np.sqrt(1.0 + R[2, 2] - R[0, 0] - R[1, 1]) * 2
+            qw = (R[1, 0] - R[0, 1]) / S
+            qx = (R[0, 2] + R[2, 0]) / S
+            qy = (R[1, 2] + R[2, 1]) / S
+            qz = 0.25 * S
+
+        return np.array([qx, qy, qz, qw])
+    
     def move_joints(self, target_joint_pos, speed = 0.01, timeout = 3):
 
         t0 = time.time()
