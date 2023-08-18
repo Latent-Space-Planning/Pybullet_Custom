@@ -123,8 +123,7 @@ class IntersectionVolumeGuide:
             else:
                 fk[:, :, i, :, :] = T
 
-        return T
-
+        return fk
 
     def define_obstacles(self, obstacle_config):
 
@@ -145,8 +144,8 @@ class IntersectionVolumeGuide:
         obstacle_vertices = torch.bmm(obstacle_transform, obstacle_static_vertices)
         # obstacle_vertices => (n, 4, 8)
 
-        self.obs_min = torch.min(obstacle_vertices, dim = 2)[0][:, :-1]
-        self.obs_max = torch.max(obstacle_vertices, dim = 2)[0][:, :-1]
+        self.obs_min = torch.min(obstacle_vertices, dim = -1)[0][:, :-1]
+        self.obs_max = torch.max(obstacle_vertices, dim = -1)[0][:, :-1]
         # obs_min => (n, 3)
         # obs_max => (n, 3)
     
@@ -215,7 +214,6 @@ class IntersectionVolumeGuide:
                 self.link_dimensions_from_name[link_name] = max_point - min_point
 
         self.link_dimensions = []
-        self.link_vertices = []
         
         for link_index in range(len(self.link_index_to_name)):
 
@@ -226,79 +224,97 @@ class IntersectionVolumeGuide:
                 link_dimensions[1] *= 4
             
             self.link_dimensions.append(link_dimensions)
-            self.link_vertices.append(self.get_vertices(link_dimensions))
+        self.link_dimensions = np.array(self.link_dimensions)
+
+        self.link_vertices = self.get_vertices(self.link_dimensions)
 
         self.link_static_joint_frame = [1, 2, 3, 4, 5, 6, 7, 7, 7] 
         self.static_frames = []
 
         # Link 0:
-        self.static_frames.append(torch.tensor([[1., 0., 0., 8.71e-05],
-                                                [0., 1., 0., -3.709035e-02],
-                                                [0., 0., 1., -6.851545e-02],
-                                                [0., 0., 0., 1.]], dtype = torch.float32))
+        self.static_frames.append([[1., 0., 0., 8.71e-05],
+                                   [0., 1., 0., -3.709035e-02],
+                                   [0., 0., 1., -6.851545e-02],
+                                   [0., 0., 0., 1.]])
         # Link 1:
-        self.static_frames.append(torch.tensor([[1., 0., 0., -8.425e-05],
-                                                [0., 1., 0., -6.93950016e-02],
-                                                [0., 0., 1., 3.71961970e-02],
-                                                [0., 0., 0., 1.]], dtype = torch.float32))
+        self.static_frames.append([[1., 0., 0., -8.425e-05],
+                                   [0., 1., 0., -6.93950016e-02],
+                                   [0., 0., 1., 3.71961970e-02],
+                                   [0., 0., 0., 1.]])
         
         # Link 2:
-        self.static_frames.append(torch.tensor([[1., 0., 0., 0.0414576],
-                                                [0., 1., 0., 0.0281429],
-                                                [0., 0., 1., -0.03293086],
-                                                [0., 0., 0., 1.]], dtype = torch.float32))
-        
+        self.static_frames.append([[1., 0., 0., 0.0414576],
+                                   [0., 1., 0., 0.0281429],
+                                   [0., 0., 1., -0.03293086],
+                                   [0., 0., 0., 1.]])
+
         # Link 3:
-        self.static_frames.append(torch.tensor([[1., 0., 0., -4.12337575e-02],
-                                                [0., 1., 0., 3.44296512e-02],
-                                                [0., 0., 1., 2.79226985e-02],
-                                                [0., 0., 0., 1.]], dtype = torch.float32))
-        
+        self.static_frames.append([[1., 0., 0., -4.12337575e-02],
+                                   [0., 1., 0., 3.44296512e-02],
+                                   [0., 0., 1., 2.79226985e-02],
+                                   [0., 0., 0., 1.]])
+
         # Link 4:
-        self.static_frames.append(torch.tensor([[1., 0., 0., 3.3450000e-05],
-                                                [0., 1., 0., 3.7388050e-02],
-                                                [0., 0., 1., -1.0619285e-01],
-                                                [0., 0., 0., 1.]], dtype = torch.float32))
-        
+        self.static_frames.append([[1., 0., 0., 3.3450000e-05],
+                                   [0., 1., 0., 3.7388050e-02],
+                                   [0., 0., 1., -1.0619285e-01],
+                                   [0., 0., 0., 1.]])
+
         # Link 5:
-        self.static_frames.append(torch.tensor([[ 1., 0., 0., 4.21935000e-02],
-                                                [ 0., 1., 0., 1.52195003e-02],
-                                                [ 0., 0., 1., 6.07699933e-03],
-                                                [ 0., 0., 0., 1.]], dtype = torch.float32))
-        
+        self.static_frames.append([[1., 0., 0., 4.21935000e-02],
+                                   [0., 1., 0., 1.52195003e-02],
+                                   [0., 0., 1., 6.07699933e-03],
+                                   [0., 0., 0., 1.]])
+
         # Link 6:
-        self.static_frames.append(torch.tensor([[ 1., 0., 0., 1.86357500e-02],
-                                                [ 0., 1., 0., 1.85788569e-02],
-                                                [ 0., 0., 1., 7.94137484e-02],
-                                                [ 0., 0., 0., 1.]], dtype = torch.float32))
-        
+        self.static_frames.append([[1., 0., 0., 1.86357500e-02],
+                                   [0., 1., 0., 1.85788569e-02],
+                                   [0., 0., 1., 7.94137484e-02],
+                                   [0., 0., 0., 1.]])
+
         # Link 7:
-        self.static_frames.append(torch.tensor([[ 7.07106767e-01, 7.07106795e-01, 0., -1.26717073e-03],
-                                                [-7.07106795e-01, 7.07106767e-01, 0., -1.25294673e-03],
-                                                [ 0., 0., 1., 1.27018693e-01],
-                                                [ 0., 0., 0., 1.]], dtype = torch.float32))
-        
+        self.static_frames.append([[7.07106767e-01, 7.07106795e-01, 0., -1.26717073e-03],
+                                   [-7.07106795e-01, 7.07106767e-01, 0., -1.25294673e-03],
+                                   [0., 0., 1., 1.27018693e-01],
+                                   [0., 0., 0., 1.]])
+
         # Link 8:
-        self.static_frames.append(torch.tensor([[ 7.07106767e-01, 7.07106795e-01, 0., 9.29352476e-03],
-                                                [-7.07106795e-01, 7.07106767e-01, 0., 9.28272434e-03],
-                                                [ 0., 0., 1., 1.92390375e-01],
-                                                [ 0., 0., 0., 1.]], dtype = torch.float32))
+        self.static_frames.append([[7.07106767e-01, 7.07106795e-01, 0., 9.29352476e-03],
+                                   [-7.07106795e-01, 7.07106767e-01, 0., 9.28272434e-03],
+                                   [0., 0., 1., 1.92390375e-01],
+                                   [0., 0., 0., 1.]])
         
-    def get_link_transform(self, link_index, joint_angles):
+        self.static_frames = torch.tensor(self.static_frames, dtype = torch.float32, device = self.device)
+        
+    def get_link_transform(self, joint_input):
 
-        joint_transform = self.forward_kinematics(self.link_static_joint_frame[link_index], joint_angles)
+        joint_transform = self.forward_kinematics_for_links(joint_input)
 
-        link_transform = joint_transform @ self.static_frames[link_index]
+        # joint_transform => (batch, traj_len, 9, 4, 4)
+        # static_frames => (9, 4, 4)
+        link_transform = joint_transform @ self.static_frames.unsqueeze(0).unsqueeze(0).repeat(joint_input.shape[0], joint_input[1], 1, 1, 1)
 
         return link_transform
     
-    def cost2(self, joint_angles):
+    def cost2(self, joint_input):
 
         # joint_angles => (b, 7, n)
         # obs_min => (n, 3)
         # obs_max => (n, 3) 
 
-        # link_transform => (n, 9, 4, 4)
+        link_transform = self.get_link_transform(joint_input)
+
+        # link_transform => (batch, traj_len, 9, 4, 4)
+        # self.link_vertices => (9, 4, 8)
+        link_vertices = link_transform @ self.link_vertices.unsqueeze(0).unsqueeze(0).repeat(joint_input.shape[0], joint_input.shape[1], 1, 1, 1)
+        link_vertices = link_vertices[:, :, :, :3, :]
+
+        # link_vertices => (batch, traj_len, 9, 3, 8)
+        link_min = torch.min(link_vertices, dim = -1)[0]
+        link_max = torch.max(link_vertices, dim = -1)[0]
+
+        # link_min => (batch, traj_len, 9, 3)
+        # link_max => (batch, traj_len, 9, 3)
 
     
     def cost(self, joint_angles, obstacle_pose, obstacle_size):
