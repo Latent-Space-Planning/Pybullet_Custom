@@ -9,6 +9,7 @@ import torch
 import os
 from diffusion.Models.temporalunet import TemporalUNet
 from diffusion.infer_diffusion import infer, infer_guided, infer_guided_batch
+from sklearn.metrics.pairwise import cosine_similarity
 
 gui =True
 timestep = 1/480
@@ -251,7 +252,7 @@ def generate_collision_course_gjk(client_id):
 
     return obstacle_centers, q0, qTarget, st_pos, end_pos
 
-obstacle_centers, q0, qTarget, st_pos, end_pos = generate_collision_course_gjk(client_id=client_id)
+obstacle_centers, q0, qTarget, st_pos, end_pos = generate_collision_course3(client_id=client_id)
 
 sphereRadius = 0.05
 inVizshape = client_id.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius, rgbaColor=[0, 1, 1, 1])
@@ -265,7 +266,8 @@ outViz = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=outVizshape,
 # Inferring from Diffusion
 device = "cuda" if torch.cuda.is_available() else "cpu"
 traj_len=50
-T = 255
+T = 255  #255
+# model_name = "/home/jayaram/research/research_tracks/table_top_rearragement/global_classifier_guidance_for_7DOF_manipulator/diffuser_ckpts_7dof_mpinets/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
 model_name = "/home/jayaram/research/research_tracks/table_top_rearragement/global_classifier_guidance_for_7DOF_manipulator/diffuser_ckpts_7dof_mpinets/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
 if not os.path.exists(model_name):
     print("Model does not exist for these parameters. Train a model first.")
@@ -276,7 +278,6 @@ _ = denoiser.to(device)
 
 # q0 = np.array([ 0.9798614,  0.5573511, -0.1629493, -1.9912002, -0.23168434, 2.214461, -0.38091224])
 # qTarget = np.array([2.2053013 ,  1.2142502 , -2.5370142 , -2.4402852 ,  1.0121354 ,1.2068753 , -1.7239444]) # 
-
 
 # getLinkStates(panda, )
 
@@ -302,10 +303,28 @@ st_time = time.time()
 # trajectory = infer(denoiser, q0, qTarget)
 # trajectory = infer_guided(denoiser, q0, qTarget, obstacle_centers, client_id, panda, panda_joints)
 trajectory_batch = infer_guided_batch(denoiser, q0, qTarget, obstacle_centers, client_id, panda, panda_joints)     #(B, 50, 7)
+
+print('unguided_multimodality_trajs shape: {}'.format(trajectory_batch.shape))
+file_name = "unguided_multimodality_trajs_without_goal_conditioning_64.npy"
+np.save(file_name, trajectory_batch)
+
 end_time = time.time()
 print("-"*10)
 print(f"Total Inference Time: {end_time - st_time} seconds")
 print("-"*10)
+
+num_trajectories = 25
+trajectory_length = 50
+num_dimensions = 7
+
+# Reshape trajectories to (25, 350) for cosine similarity calculation
+reshaped_trajectories = [trajectory.reshape(-1) for trajectory in trajectory_batch]
+stacked_trajectories = np.vstack(reshaped_trajectories)
+# Calculate cosine similarity matrix
+cosine_sim_matrix = cosine_similarity(stacked_trajectories)
+print('cosine_sim_matrix shape: {}'.format(trajectory_batch.shape))
+file_name = "cosine_sim_matrix_without_goal_conditioning_64.npy"
+np.save(file_name, cosine_sim_matrix)
 
 for b in range(trajectory_batch.shape[0]):
     for i, joint_ind in enumerate(panda_joints):    #reset initial joint state 
