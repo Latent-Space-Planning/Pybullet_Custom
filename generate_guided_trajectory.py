@@ -1,8 +1,8 @@
 from pybullet_environment import *
 from diffusion_model import *
+from guide import *
 
 import os
-import sys
 
 device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -26,12 +26,12 @@ if not os.path.exists(model_name):
     _ = input("Press anything to exit")
     exit()
 
+# Load Models:
 env = RobotEnvironment()
-
 diffuser = Diffusion(T, device = device)
-
 denoiser = TemporalUNet(model_name = model_name, input_dim = num_channels, time_dim = 32, dims=(32, 64, 128, 256, 512, 512),
                         device = device)
+guide = IntersectionVolumeGuide(env)
 
 # Define Environment:
 # obs_pos = np.array([0.6, 0., 0.18])
@@ -56,6 +56,7 @@ obs_id = env.client_id.createMultiBody(baseVisualShapeIndex = vuid,
                                        basePosition = obs_pos, 
                                        baseOrientation = obs_quat)
 
+
 os.system("clear")
 print("Environment and Model Loaded \n")
 
@@ -63,18 +64,22 @@ _ = input("Press Enter to start generating trajectory")
 
 st_time = time.time()
 
-trajectory = diffuser.denoise(model = denoiser,
-                              traj_len = traj_len,
-                              num_channels = num_channels,
-                              condition = True,
-                              start = start_joints,
-                              goal = goal_joints)
+trajectory = diffuser.denoise_guided(model = denoiser,
+                                     guide = guide,
+                                     obs_pose = obs_pose,
+                                     obs_size = obs_size,
+                                     traj_len = traj_len,
+                                     num_channels = num_channels,
+                                     condition = True,
+                                     start = start_joints,
+                                     goal = goal_joints)
 
 print("Denoising took " + str(np.round((time.time() - st_time), 2)) + " seconds")
 
 env.execute_trajectory(trajectory)
 
 _ = input("Execution complete. Press Enter to Continue")
+np.save(trajectory, "traj.npy")
 
 
 

@@ -121,6 +121,10 @@ class RobotEnvironment:
                 self.link_dimensions[link_name] = max_point - min_point
                 self.link_centers[link_name] = self.link_dimensions[link_name]/2 + min_point
     
+    def clip_joints(self, joints):
+
+        return np.clip(joints, self.joint_lower_limits, self.joint_upper_limits)
+    
     def draw_link_bounding_boxes(self):
 
         self.link_poses = []

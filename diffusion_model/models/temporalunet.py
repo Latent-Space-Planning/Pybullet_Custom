@@ -8,7 +8,7 @@ from diffusion_model.models.blocks import *
 
 class TemporalUNet(nn.Module):
 
-    def __init__(self, model_name, input_dim, time_dim, dims = (32, 64, 128, 256)):
+    def __init__(self, model_name, input_dim, time_dim, device, dims = (32, 64, 128, 256)):
 
         super(TemporalUNet, self).__init__()
 
@@ -41,6 +41,8 @@ class TemporalUNet(nn.Module):
             self.losses = np.array([])
         else:
             self.load()
+
+        _ = self.to(device)
 
     def forward(self, x, t):
         """

@@ -5,13 +5,15 @@ from .gaussian import Gaussian
 
 class Diffusion(Gaussian):
     
-    def __init__(self, T, variance_thresh = 0.02):
+    def __init__(self, T, device, variance_thresh = 0.02):
 
         self.T = T
         self.beta = self.schedule_variance(variance_thresh)
 
         self.alpha = 1 - self.beta
         self.alpha_bar = np.array(list(map(lambda t:np.prod(self.alpha[:t]), np.arange(self.T+1)[1:])))
+
+        self.device = device
 
         Gaussian.__init__(self)
     
@@ -247,29 +249,60 @@ class Diffusion(Gaussian):
         return X, Y, time_steps, means, vars
     
     def denoise(self, model, traj_len, num_channels, start = None, goal = None, condition = True):
-
-        device = "cuda" if torch.cuda.is_available() else "cpu"
         
         X_t = np.random.multivariate_normal(mean = np.zeros(traj_len), cov = np.eye(traj_len), size = (1, num_channels))
 
         if condition:
-            X_t[:, :, 0] = start[:-2]
-            X_t[:, :, -1] = goal[:-2]
+            X_t[:, :, 0] = start[:]
+            X_t[:, :, -1] = goal[:]
 
         model.train(False)
 
         for t in range(self.T, 0, -1):
 
-            X_input = torch.tensor(X_t, dtype = torch.float32).to(device)
-            time_in = torch.tensor([t], dtype = torch.float32).to(device)
+            X_input = torch.tensor(X_t, dtype = torch.float32).to(self.device)
+            time_in = torch.tensor([t], dtype = torch.float32).to(self.device)
 
             epsilon = model(X_input, time_in).numpy(force=True)
 
             X_t = self.p_sample_using_posterior(X_t, t, epsilon)
 
             if condition:
-                X_t[:, :, 0] = start[:-2]
-                X_t[:, :, -1] = goal[:-2]
+                X_t[:, :, 0] = start[:]
+                X_t[:, :, -1] = goal[:]
+
+            print("\rDenoised " + str(t-1) + " timesteps", end="", flush=True)
+
+        return X_t[0]
+    
+    def denoise_guided(self, model, guide, obs_pose, obs_size, traj_len, num_channels, start = None, goal = None, condition = True):
+        
+        X_t = np.random.multivariate_normal(mean = np.zeros(traj_len), cov = np.eye(traj_len), size = (1, num_channels))
+
+        if condition:
+            X_t[:, :, 0] = start[:]
+            X_t[:, :, -1] = goal[:]
+
+        model.train(False)
+
+        for t in range(self.T, 0, -1):
+
+            X_input = torch.tensor(X_t, dtype = torch.float32).to(self.device)
+            time_in = torch.tensor([t], dtype = torch.float32).to(self.device)
+
+            epsilon = model(X_input, time_in).numpy(force=True)
+
+            X_t = self.p_sample_using_posterior(X_t, t, epsilon)
+
+            if t != 1:
+                for i in range(1, X_t.shape[2] - 1):
+                    clipped_joints = guide.env.clip_joints(X_t[0, :, i])
+                    gradient = guide.get_gradient(clipped_joints, obs_pose, obs_size)
+                    X_t[0, :, i] = X_t[0, :, i] - 2.2 * gradient
+
+            if condition:
+                X_t[:, :, 0] = start[:]
+                X_t[:, :, -1] = goal[:]
 
             print("\rDenoised " + str(t-1) + " timesteps", end="", flush=True)
 
