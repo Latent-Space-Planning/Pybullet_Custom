@@ -55,6 +55,8 @@ class RobotEnvironment:
         if manipulator:
             self.initialize_manipulator()
 
+        self.obs_ids = []
+
     def initialize_manipulator(self, urdf_file = "franka_panda/panda.urdf", base_position = (0, 0, 0)):
 
         self.manipulator = self.client_id.loadURDF(urdf_file, basePosition = base_position, useFixedBase = True)
@@ -121,9 +123,29 @@ class RobotEnvironment:
                 self.link_dimensions[link_name] = max_point - min_point
                 self.link_centers[link_name] = self.link_dimensions[link_name]/2 + min_point
     
+    def spawn_obstacles(self, obstacle_config):
+
+        for i in range(obstacle_config.shape[0]):
+            
+            vuid = self.client_id.createVisualShape(p.GEOM_BOX, 
+                                        halfExtents = obstacle_config[i, 7:]/2,
+                                        rgbaColor = np.hstack([self.colors['yellow'], np.array([1.0])]))
+
+            obs_id = self.client_id.createMultiBody(baseVisualShapeIndex = vuid, 
+                                                basePosition = obstacle_config[i, :3], 
+                                                baseOrientation = obstacle_config[i, 3:7])
+            
+            self.obs_ids.append(obs_id)
+    
+    def clear_obstacles(self):
+
+        for id in self.obs_ids:
+            self.client_id.removeBody(id)
+        self.obs_ids = []
+    
     def clip_joints(self, joints):
 
-        return np.clip(joints, self.joint_lower_limits, self.joint_upper_limits)
+        return np.clip(joints, self.joint_lower_limits[np.newaxis, :, np.newaxis], self.joint_upper_limits[np.newaxis, :, np.newaxis])
     
     def draw_link_bounding_boxes(self):
 
