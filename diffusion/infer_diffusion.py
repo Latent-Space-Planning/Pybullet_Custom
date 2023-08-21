@@ -7,6 +7,8 @@ import numpy as np
 import pybullet as p
 
 import sys 
+from torch import nn
+# import torch.nn.functional as F
 
 sys.path.append('/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom')
 # sys.path.append('/home/jayaram/research/research_tracks/table_top_rearragement/Pybullet_Custom/diffusion/priors')
@@ -168,7 +170,14 @@ def clip_joints(q):
 def clip_joints_torch(q):
     lower_lims = torch.tensor([-2.8973000049591064, -1.7627999782562256, -2.8973000049591064, -3.0717999935150146, -2.8973000049591064, -0.017500000074505806, -2.8973000049591064])
     upper_lims = torch.tensor([2.8973000049591064, 1.7627999782562256, 2.8973000049591064, -0.0697999969124794, 2.8973000049591064, 3.752500057220459, 2.8973000049591064])
-    return torch.clip(q.T, lower_lims, upper_lims)
+    return torch.clip(q, lower_lims, upper_lims)
+    # Transpose batch dimensions to match the lower/upper limits
+    # q_batch = q.transpose(1, 2)
+    # # Apply clipping to each element in the batch
+    # clipped_batch = torch.clip(q_batch, lower_lims, upper_lims)
+    # # Transpose the batch dimensions back to the original shape
+    # clipped_batch = clipped_batch.transpose(1, 2)
+    # return clipped_batch
 
 def value_func_and_grad(obstacle_center, link_pos):
     '''
@@ -196,7 +205,11 @@ def value_func_and_grad_torch(obstacle_centers, link_pos):
     grad = torch.zeros_like(link_pos)
     # st_time = time.time()
     for obs_cen in obstacle_centers:
-        net_dist += torch.sum(torch.clip(torch.norm(obs_cen - link_pos, dim=1), max=0.8))#torch.min(torch.norm(obs_cen - link_pos), torch.ones_like(link_pos)*0.3, keepdim=True))
+        net_dist += torch.sum(torch.norm(obs_cen - link_pos, dim=1))
+        # dist = torch.norm(obs_cen - link_pos, dim=1)
+        # modified_dist = torch.where(dist <= 0.35, dist, torch.scalar_tensor(0.35))
+        # net_dist += torch.sum(modified_dist)
+        # net_dist += torch.sum(torch.clip(torch.norm(obs_cen - link_pos, dim=1), max=0.4))#torch.min(torch.norm(obs_cen - link_pos), torch.ones_like(link_pos)*0.3, keepdim=True))
     # print("Net distance: {}")
     # print(f"Time check for all obstacles: {time.t}")
 
@@ -218,82 +231,83 @@ def calc_gradients_batch_torch_kinematics(obstacle_centers, traj_batch, client_i
     num_joints = traj_batch.shape[1]
     traj_len = traj_batch.shape[2]
 
+    # clipped_traj_batch = clip_joints_torch(traj_batch)
+
     gradients = np.zeros(traj_batch.shape, dtype=float)  # Shape: (B, 7, traj_len)
 
-    # traj_batch shape: (25, 7, 50)
-    traj_batch_lin = traj_batch.permute(1, 0, 2).reshape(7, -1)    # combine conf of all trajs in current batch  (7, B*traj_len)
+    # # traj_batch shape: (25, 7, 50)
+    # traj_batch_lin = traj_batch.permute(1, 0, 2).reshape(7, -1)    # combine conf of all trajs in current batch  (7, B*traj_len)
 
-    # st_time = time.time()
-    clipped_q_batch = clip_joints_torch(traj_batch_lin)
-    clipped_q_batch = torch.concatenate([clipped_q_batch, torch.zeros(batch_size*traj_len, 2)], dim=1)  # : (B*traj_len = 1250, 9)
-    # print(f"Clip Joints: {time.time() - st_time}")
+    # # st_time = time.time()
+    # # clipped_q_batch = clip_joints_torch(traj_batch_lin)
+    # # clipped_q_batch = torch.concatenate([clipped_traj_batch, torch.zeros(batch_size*traj_len, 2)], dim=1)  # : (B*traj_len = 1250, 9)
+    # # # print(f"Clip Joints: {time.time() - st_time}")
 
-    # st_time = time.time()
-    link_poses_batch = fwd_kinematics.get_batch_differential_forward_kinematics(clipped_q_batch)
-    # print(f"Forward kine time: {time.time() - st_time}")
+    # # st_time = time.time()
+    # # link_poses_batch = fwd_kinematics.get_batch_differential_forward_kinematics(clipped_q_batch)
+    # # print(f"Forward kine time: {time.time() - st_time}")
 
-    # st_time = time.time()
-    coll_score = 0.0
-    for b in range(traj_batch.shape[0]):    #can we compute score by stacking all the traj batches and backpropogate , I dont think so (we need to iterate over each traj_batch seperately)
-        for l_k in link_poses_batch.keys():
-            coll_score += value_func_and_grad_torch(obstacle_centers, link_poses_batch[l_k][:, :3, 3])[0]
-        # print(f"Collision Check time for link {l_k}: {time.time() - st_time2}")
-    # print(f"Collision Check time for all links: {time.time() - st_time}")
-
-    # st_time = time.time()
-    coll_score.backward()
-    # print(f"Backward time: {time.time() - st_time}")
-
-    return True
-
-    # for j in range(traj_len):
-    #     q_batch = traj_batch[:, :, j]    #jth conf in batch of trajs (traj_batch)
-    #     # clipped_q_batch = clip_joints(q_batch)
-        
-    #     clipped_q_batch = clip_joints_torch(q_batch)
-    #     clipped_q_batch = torch.concatenate([clipped_q_batch, torch.zeros(batch_size, 2)], dim=1)  # : (B, 9)
-    #     print(f"Clip Joints: {time.time() - st_time}")
-
-    #     link_poses_batch = fwd_kinematics.get_batch_differential_forward_kinematics(clipped_q_batch)    #dict : link positions i.w world2link for all 10 links in current batch of conf)
-    #     # com_trn_batch = client_id.getLinkState(panda, 6, computeForwardKinematics=1)[2]
-    #     # J_t_batch, J_r_batch = client_id.calculateJacobian(panda, 6, list(com_trn_batch), clipped_q_batch.tolist(), np.zeros_like(q_batch).tolist(), np.zeros_like(q_batch).tolist())
-    #     # J_t_batch = np.array(J_t_batch)
-    #     # J_r_batch = np.array(J_r_batch)
-
-    #     # we can directly compute clipped q grad from torch FK
-    #     st_time = time.time()
+    # # st_time = time.time()
+    # for b in range(traj_batch.shape[0]):    #can we compute score by stacking all the traj batches and backpropogate , I dont think so (we need to iterate over each traj_batch seperately)
     #     coll_score = 0.0
-    #     for link in link_poses_batch.keys():
-    #         link_pos = link_poses_batch[link][:, :3, 3]    #(B, 3)
-    #         #  get collision score (sum up the distances of current link pos from all obstacles)
-    #         for k in range(len(obstacle_centers)):
-    #             coll_score += value_func_and_grad_torch(obstacle_centers[k], link_pos)[0]
-    #         # link_pos.norm().backward()
-    #     print(f"Value function time: {time.time() - st_time}")
+    #     link_poses = fwd_kinematics.get_batch_differential_forward_kinematics(clipped_traj_batch[b])
+    #     for l_k in link_poses.keys():    #all links (panda_link0, ...., panda_hand, .....)
+    #         coll_score += value_func_and_grad_torch(obstacle_centers, link_poses[l_k][:, :3, 3])[0]
 
-    #     # print('coll score for traj j : {}'.format(coll_score))
-    #     st_time = time.time()
-    #     coll_score.backward()
-    #     print(f"Backward time: {time.time() - st_time}")
+    #     # coll_score.backward()
 
-    #     # grad_batch = None
-    #     # for k in range(len(obstacle_centers)):
-    #     #     if k == 0:
-    #     #         values, grad_batch = value_func_and_grad_batch(obstacle_centers[k], link_pos_batch)
-    #     #     else:
-    #     #         _, temp_grad_batch = value_func_and_grad_batch(obstacle_centers[k], link_pos_batch)
-    #     #         grad_batch += temp_grad_batch
+    #     # print(f"Collision Check time for link {l_k}: {time.time() - st_time2}")
+    # # print(f"Collision Check time for all links: {time.time() - st_time}")
 
-    #     # grad_batch = grad_batch / len(obstacle_centers)
-    #     # net_grad_batch = np.sum(grad_batch[:, :, np.newaxis] * J_t_batch[:, :7], axis=1)
-    #     # denom_batch = np.linalg.norm(net_grad_batch, axis=1)
+    # # st_time = time.time()
+    # coll_score.backward()
+    # # print(f"Backward time: {time.time() - st_time}")
 
-    #     # nonzero_denom_indices = denom_batch > 0
-    #     # net_grad_batch[nonzero_denom_indices] = net_grad_batch[nonzero_denom_indices] / denom_batch[nonzero_denom_indices, np.newaxis]
+    # return True
 
-    #     # gradients[:, :, j] = net_grad_batch / num_joints
+    for j in range(traj_len):
+        q_batch = traj_batch[:, :, j]    #jth conf in batch of trajs (traj_batch)
+        # clipped_q_batch = clip_joints(q_batch)
+        
+        clipped_q_batch = clip_joints_torch(q_batch)
+        # q_batch = torch.concatenate([q_batch, torch.zeros(batch_size, 2)], dim=1)  # : (B, 9)
+        clipped_q_batch = torch.concatenate([clipped_q_batch, torch.zeros(batch_size, 2)], dim=1)  # : (B, 9)
 
-    # return np.clip(gradients, -1, 1)
+        link_poses_batch = fwd_kinematics.get_batch_differential_forward_kinematics(clipped_q_batch)  #clipped_q_batch    #dict : link positions i.w world2link for all 10 links in current batch of conf)
+        # com_trn_batch = client_id.getLinkState(panda, 6, computeForwardKinematics=1)[2]
+        # J_t_batch, J_r_batch = client_id.calculateJacobian(panda, 6, list(com_trn_batch), clipped_q_batch.tolist(), np.zeros_like(q_batch).tolist(), np.zeros_like(q_batch).tolist())
+        # J_t_batch = np.array(J_t_batch)
+        # J_r_batch = np.array(J_r_batch)
+
+        # we can directly compute clipped q grad from torch FK
+        coll_score = 0.0
+        for link in link_poses_batch.keys():
+            link_pos = link_poses_batch[link][:, :3, 3]    #(B, 3)
+            #  get collision score (sum up the distances of current link pos from all obstacles)
+            for k in range(len(obstacle_centers)):
+                coll_score += value_func_and_grad_torch(obstacle_centers[k], link_pos)[0]
+            # link_pos.norm().backward()
+
+        coll_score.backward()
+
+        # grad_batch = None
+        # for k in range(len(obstacle_centers)):
+        #     if k == 0:
+        #         values, grad_batch = value_func_and_grad_batch(obstacle_centers[k], link_pos_batch)
+        #     else:
+        #         _, temp_grad_batch = value_func_and_grad_batch(obstacle_centers[k], link_pos_batch)
+        #         grad_batch += temp_grad_batch
+
+        # grad_batch = grad_batch / len(obstacle_centers)
+        # net_grad_batch = np.sum(grad_batch[:, :, np.newaxis] * J_t_batch[:, :7], axis=1)
+        # denom_batch = np.linalg.norm(net_grad_batch, axis=1)
+
+        # nonzero_denom_indices = denom_batch > 0
+        # net_grad_batch[nonzero_denom_indices] = net_grad_batch[nonzero_denom_indices] / denom_batch[nonzero_denom_indices, np.newaxis]
+
+        # gradients[:, :, j] = net_grad_batch / num_joints
+
+    return np.clip(gradients, -1, 1)
 
 def calc_gradients_batch_brute_force(obstacle_centers, traj_batch, client_id, panda, panda_joints):
     batch_size = traj_batch.shape[0]
@@ -412,6 +426,30 @@ def calc_gradients(obstacle_centers, traj, client_id, panda, panda_joints):
     print(f"Norm of gradient: {np.linalg.norm(gradients)}\t Max gradient: {np.max(gradients)}")
     return np.clip(gradients, -1, 1)    #(1, 7, 50)
 
+def calc_multimodality_gradients(traj_batch, client_id, panda, panda_joints):
+    '''Calculate Gradients
+    '''
+    batch_size = traj_batch.shape[0]
+    num_joints = traj_batch.shape[1]
+    traj_len = traj_batch.shape[2]
+
+    # traj_batch = torch.tensor(traj_batch, dtype=torch.float)
+    multimodality_loss = 0.0
+    reshaped_trajectories = [trajectory.reshape(-1) for trajectory in traj_batch]
+    stacked_trajectories = torch.stack(reshaped_trajectories, dim=0)   #(25, 350)
+
+    Temp = 1
+    logits = (stacked_trajectories @ stacked_trajectories.T) / Temp   #(25, 25)
+    similarity_matrix = torch.eye(batch_size)
+    targets = torch.softmax(
+        similarity_matrix / 2 * Temp, dim=-1
+    )
+    cp_loss = cross_entropy(logits, targets, reduction='none')
+    loss =  cp_loss / 2.0 # shape: (batch_size)
+    multimodality_loss += loss.mean()
+
+    multimodality_loss.backward()
+    
 def calc_gradients_from_sdf_network(obstacle_centers, traj, client_id, panda, panda_joints):
     '''Calculate Gradients
     '''
@@ -479,7 +517,14 @@ def calc_gradients_from_sdf_network(obstacle_centers, traj, client_id, panda, pa
     return clipped_grads
     # return np.clip(gradients, -1, 1)    #(1, 7, 50)
 
-
+def cross_entropy(preds, targets, reduction='none'):
+    log_softmax = nn.LogSoftmax(dim=-1)
+    loss = (-targets * log_softmax(preds)).sum(1)
+    if reduction == "none":
+        return loss
+    elif reduction == "mean":
+        return loss.mean()
+    
 def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda, panda_joints):
     '''Finds the trajectory using the denoiser between q0 and target
 
@@ -503,11 +548,12 @@ def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda,
     mean = np.zeros(traj_len)
     cov = np.eye(traj_len)
 
-    obstacle_centers = [torch.tensor(arr) for arr in obstacle_centers]   #comment this when using calc_gradients fn 
+    # obstacle_centers = [torch.tensor(arr) for arr in obstacle_centers]   #comment this when using calc_gradients fn 
 
     xT_batch = np.random.multivariate_normal(mean, cov, (batch_size, 7))    #(B, 7, 50)
     X_t_batch = xT_batch.copy()
-    xT_batch = torch.tensor(xT_batch, dtype=torch.float, requires_grad=True)   #comment this when using calc_gradients fn  
+    xT_batch = torch.tensor(xT_batch, dtype=torch.float)   #comment this when using calc_gradients fn  
+    xT_batch.requires_grad = True
 
     # CONDITIONING:
     rest_poses = np.array([-0.00029003781167199756, -0.10325848749542864, 0.00020955647419784322,
@@ -520,13 +566,13 @@ def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda,
     reverse_diff_traj_batch[T] = einops.rearrange(X_t_batch, 'b c n ->b n c').copy()
 
     denoiser.train(False)
-    fwd_kinematics = Torch_fwd_kinematics_Panda()   #comment this when using calc_gradients fn  
+    # fwd_kinematics = Torch_fwd_kinematics_Panda()   #comment this when using calc_gradients fn  
 
     # st_time = time.time()
     # print("bo")
     for t in range(T, 0, -1):
         # print("yo")
-        # xT_batch.requires_grad = True     #comment this when using calc_gradients fn  
+        xT_batch.requires_grad = True     #comment this when using calc_gradients fn  
         print(f"\rTimestep: {t}", end="")
 
         if t > 1:
@@ -539,31 +585,36 @@ def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda,
 
         epsilon = denoiser(X_input_batch, time_in_batch).numpy(force=True)   #(B, 7, 50)
         # st_time = time.time()
-        # epsilon_classifier = calc_gradients(obstacle_centers, X_t_batch, client_id, panda, panda_joints)
+        # epsilon_classifier = calc_gradients(obstacle_centers, X_t_batch, client_id, panda, panda_joints)   #use this for naive
         # epsilon_classifier = calc_gradients_batch_torch_kinematics(obstacle_centers, X_t_batch, client_id, panda, panda_joints)
-        calc_gradients_batch_torch_kinematics(obstacle_centers, xT_batch, client_id, panda, panda_joints, fwd_kinematics)
+        # calc_gradients_batch_torch_kinematics(obstacle_centers, xT_batch, client_id, panda, panda_joints, fwd_kinematics)
         # print(f"calc grad total time: {time.time() - st_time}")
 
-
-        epsilon_classifier = torch.clip(xT_batch.grad, -1, 1)       #comment this when using calc_gradients fn  
+        # epsilon_classifier = torch.clip(xT_batch.grad, -1, 1)       #comment this when using calc_gradients fn  
+        # epsilon_classifier = xT_batch.grad     #comment this when using calc_gradients fn  
         # Most of the elements are zero here. Shouldnt be.
 
         # cl_weightage = np.clip(np.log(1+((t-2)/T)*(np.exp(1) - 1)), 0.005, 1) # np.clip((t/T) * 0.1, 0.001, 1) # np.clip((1 - t/T), 0.01, 1) * 0.1
         if t>=7:    # t = 7 is working well with np.clip((t/T) * 0.01, 0.001, 1)
-            cl_weightage = np.clip((t/T) * 0.01, 0.001, 1)
+            cl_weightage = np.clip((t/T) * 0.035, 0.001, 1)
         else:
-            cl_weightage = 0.001   #0.00001
+            cl_weightage = 0.0001   #0.00001
 
-        # cl_weightage = 100
-        X_t_batch = (1/np.sqrt(alpha[t-1])) * (X_t_batch - ((1 - alpha[t-1])/(np.sqrt(1 - alpha_bar[t-1]))) * epsilon) + beta[t-1]*z + cl_weightage*epsilon_classifier.numpy()
-        
+
+        # get gradients for multimodality
+        calc_multimodality_gradients(xT_batch, client_id, panda, panda_joints)
+        epsilon_multimodality_classifier = torch.clip(xT_batch.grad, -1, 1)
+
+        # X_t_batch = (1/np.sqrt(alpha[t-1])) * (X_t_batch - ((1 - alpha[t-1])/(np.sqrt(1 - alpha_bar[t-1]))) * epsilon) + beta[t-1]*z #+ cl_weightage*epsilon_classifier.numpy()
+        X_t_batch = (1/np.sqrt(alpha[t-1])) * (X_t_batch - ((1 - alpha[t-1])/(np.sqrt(1 - alpha_bar[t-1]))) * epsilon) + beta[t-1]*z + cl_weightage*epsilon_multimodality_classifier.numpy()
+
         # CONDITIONING:
         X_t_batch[:, :, 0] = q0 # start[:] # rest_poses # start[:]  -- broadcasting
         X_t_batch[:, :, -1] = target # goal[:]
         
         reverse_diff_traj_batch[t-1] = einops.rearrange(X_t_batch, 'b c n -> b n c').copy()
         
-         #comment below when using calc_gradients fn  
+        #comment below when using calc_gradients fn  
         xT_batch.detach()
         xT_batch = torch.Tensor(X_t_batch)
 

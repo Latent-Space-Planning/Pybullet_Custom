@@ -14,7 +14,6 @@ from sklearn.metrics.pairwise import cosine_similarity
 gui =True
 timestep = 1/480
 
-
 client_id = bc.BulletClient(p.GUI if gui else p.DIRECT)
 client_id.setAdditionalSearchPath(pybullet_data.getDataPath())
 client_id.setTimeStep(timestep)
@@ -305,7 +304,7 @@ st_time = time.time()
 trajectory_batch = infer_guided_batch(denoiser, q0, qTarget, obstacle_centers, client_id, panda, panda_joints)     #(B, 50, 7)
 
 print('unguided_multimodality_trajs shape: {}'.format(trajectory_batch.shape))
-file_name = "unguided_multimodality_trajs_without_goal_conditioning_64.npy"
+file_name = "unguided_multimodality_trajs_without_strt_goal_conditioning_255.npy"
 np.save(file_name, trajectory_batch)
 
 end_time = time.time()
@@ -323,7 +322,7 @@ stacked_trajectories = np.vstack(reshaped_trajectories)
 # Calculate cosine similarity matrix
 cosine_sim_matrix = cosine_similarity(stacked_trajectories)
 print('cosine_sim_matrix shape: {}'.format(trajectory_batch.shape))
-file_name = "cosine_sim_matrix_without_goal_conditioning_64.npy"
+file_name = "cosine_sim_matrix_without_strt_goal_conditioning_255.npy"
 np.save(file_name, cosine_sim_matrix)
 
 for b in range(trajectory_batch.shape[0]):

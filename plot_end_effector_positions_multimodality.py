@@ -9,7 +9,7 @@ num_trajectories = 25
 trajectory_length = 50
 num_dimensions = 7
 
-trajectories = np.load('unguided_multimodality_trajs_without_goal_conditioning.npy')
+trajectories = np.load('unguided_multimodality_trajs_without_strt_goal_conditioning_255.npy')
 
 gui =True
 timestep = 1/480
@@ -27,7 +27,6 @@ client_id.resetDebugVisualizerCamera(
     cameraPitch=-25,
     cameraTargetPosition=target,
 )
-
 
 p.resetSimulation()
 client_id.setGravity(0, 0, -9.8)

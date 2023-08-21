@@ -6,7 +6,7 @@ import pybullet as p
 import pybullet_data
 import pybullet_utils.bullet_client as bc
 
-trajectories = np.load('unguided_multimodality_trajs_without_goal_conditioning.npy')
+trajectories = np.load('unguided_multimodality_trajs_without_strt_goal_conditioning_255.npy')
 
 # Reshape trajectories to (25, 350) for cosine similarity calculation
 reshaped_trajectories = [trajectory.reshape(-1) for trajectory in trajectories]
