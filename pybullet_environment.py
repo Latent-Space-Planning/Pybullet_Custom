@@ -7,6 +7,7 @@ import time
 import re
 import os
 import torch
+import h5py
 
 class RobotEnvironment:
 
@@ -17,6 +18,8 @@ class RobotEnvironment:
         self.client_id.setTimeStep(timestep)                                    # Set simulation timestep
         self.client_id.configureDebugVisualizer(p.COV_ENABLE_SHADOWS, 0)        # Disable Shadows
 
+        self.timestep = timestep
+        
         p.setAdditionalSearchPath(pybullet_data.getDataPath())      # Add pybullet's data package to path   
 
         self.colors = {'blue': np.array([78, 121, 167]) / 255.0,  # blue
@@ -41,16 +44,16 @@ class RobotEnvironment:
         p.resetSimulation()                             
         self.client_id.setGravity(0, 0, -9.8)           # Set Gravity
 
-        self.plane = self.client_id.loadURDF("plane.urdf", basePosition=(0, 0, 0), useFixedBase=True)   # Load a floor
+        # self.plane = self.client_id.loadURDF("plane.urdf", basePosition=(0, 0, 0), useFixedBase=True)   # Load a floor
         
-        self.client_id.changeDynamics(                  # Set physical properties of the floor
-            self.plane,
-            -1,
-            lateralFriction=1.1,
-            restitution=0.5,
-            linearDamping=0.5,
-            angularDamping=0.5,
-        )
+        # self.client_id.changeDynamics(                  # Set physical properties of the floor
+        #     self.plane,
+        #     -1,
+        #     lateralFriction=1.1,
+        #     restitution=0.5,
+        #     linearDamping=0.5,
+        #     angularDamping=0.5,
+        # )
 
         if manipulator:
             self.initialize_manipulator()
@@ -123,17 +126,117 @@ class RobotEnvironment:
                 self.link_dimensions[link_name] = max_point - min_point
                 self.link_centers[link_name] = self.link_dimensions[link_name]/2 + min_point
     
-    def spawn_obstacles(self, obstacle_config):
+    def get_mpinet_scene(self, index, data = 'train'):
 
-        for i in range(obstacle_config.shape[0]):
+        with h5py.File("Assets/dataset/" + data + "/" + data + ".hdf5", "r") as f:
+
+            cuboid_centers = f['cuboid_centers'][index]
+            cuboid_dims = f['cuboid_dims'][index]
+            cuboid_quaternions = np.roll(f['cuboid_quaternions'][index], -1, axis = 1)
+
+            cylinder_centers = f['cylinder_centers'][index]
+            cylinder_heights = f['cylinder_heights'][index]
+            cylinder_quaternions = np.roll(f['cylinder_quaternions'][index], -1, axis = 1)
+            cylinder_radii = f['cylinder_radii'][index]
+
+            num_cuboids = np.argmax(np.any(cuboid_dims == 0, axis = 1))
+            num_cylinders = np.argmax(np.any(cylinder_heights == 0, axis = 1))
+
+            cuboid_centers = cuboid_centers[:num_cuboids]
+            cuboid_dims = cuboid_dims[:num_cuboids]
+            cuboid_quaternions = cuboid_quaternions[:num_cuboids]
+
+            cuboid_config = np.concatenate([cuboid_centers, cuboid_quaternions, cuboid_dims], axis = 1)
+            
+            cylinder_centers = cylinder_centers[:num_cylinders]
+            cylinder_heights = cylinder_heights[:num_cylinders]
+            cylinder_quaternions = cylinder_quaternions[:num_cylinders]
+            cylinder_radii = cylinder_radii[:num_cylinders]
+
+            cylinder_config = np.concatenate([cylinder_centers, cylinder_quaternions, cylinder_radii, cylinder_heights], axis = 1)
+
+            cylinder_cuboid_dims = np.zeros((num_cylinders, 3))
+            cylinder_cuboid_dims[:, 0] = cylinder_radii[:, 0]
+            cylinder_cuboid_dims[:, 1] = cylinder_radii[:, 0]
+            cylinder_cuboid_dims[:, 2] = cylinder_heights[:, 0]
+
+            obstacle_centers = np.concatenate([cuboid_centers, cylinder_centers], axis = 0)
+            obstacle_dims = np.concatenate([cuboid_dims, cylinder_cuboid_dims], axis = 0)
+            obstacle_quaternions = np.concatenate([cuboid_quaternions, cylinder_quaternions], axis = 0)
+
+            obstacle_config = np.concatenate([obstacle_centers, obstacle_quaternions, obstacle_dims], axis = 1)
+
+            start = f['hybrid_solutions'][index][0, :]
+            goal = f['hybrid_solutions'][index][-1, :]
+
+            return obstacle_config, cuboid_config, cylinder_config, start, goal
+    
+    def spawn_cuboids(self, cuboid_config):
+
+        for i in range(cuboid_config.shape[0]):
             
             vuid = self.client_id.createVisualShape(p.GEOM_BOX, 
-                                        halfExtents = obstacle_config[i, 7:]/2,
+                                        halfExtents = cuboid_config[i, 7:]/2,
                                         rgbaColor = np.hstack([self.colors['yellow'], np.array([1.0])]))
 
             obs_id = self.client_id.createMultiBody(baseVisualShapeIndex = vuid, 
-                                                basePosition = obstacle_config[i, :3], 
-                                                baseOrientation = obstacle_config[i, 3:7])
+                                                basePosition = cuboid_config[i, :3], 
+                                                baseOrientation = cuboid_config[i, 3:7])
+            
+            self.obs_ids.append(obs_id)
+
+    def spawn_cylinders(self, cylinder_config):
+
+        for i in range(cylinder_config.shape[0]):
+            
+            vuid = self.client_id.createVisualShape(p.GEOM_CYLINDER, 
+                                        radius = cylinder_config[i, 7],
+                                        length = cylinder_config[i, 8],
+                                        rgbaColor = np.hstack([self.colors['yellow'], np.array([1.0])]))
+
+            obs_id = self.client_id.createMultiBody(baseVisualShapeIndex = vuid, 
+                                                basePosition = cylinder_config[i, :3], 
+                                                baseOrientation = cylinder_config[i, 3:7])
+            
+            self.obs_ids.append(obs_id)
+    
+    def spawn_collision_cuboids(self, cuboid_config):
+
+        for i in range(cuboid_config.shape[0]):
+            
+            cuid = self.client_id.createCollisionShape(p.GEOM_BOX, 
+                                                       halfExtents = cuboid_config[i, 7:]/2)
+            
+            vuid = self.client_id.createVisualShape(p.GEOM_BOX, 
+                                                    halfExtents = cuboid_config[i, 7:]/2,
+                                                    rgbaColor = np.hstack([self.colors['yellow'], np.array([1.0])]))
+
+            obs_id = self.client_id.createMultiBody(baseMass = 0.,
+                                                    baseCollisionShapeIndex = cuid,
+                                                    baseVisualShapeIndex = vuid, 
+                                                    basePosition = cuboid_config[i, :3], 
+                                                    baseOrientation = cuboid_config[i, 3:7])
+            
+            self.obs_ids.append(obs_id)
+
+    def spawn_collision_cylinders(self, cylinder_config):
+
+        for i in range(cylinder_config.shape[0]):
+            
+            cuid = self.client_id.createCollisionShape(p.GEOM_CYLINDER, 
+                                                       radius = cylinder_config[i, 7],
+                                                       length = cylinder_config[i, 8])                                                   
+            
+            vuid = self.client_id.createVisualShape(p.GEOM_CYLINDER, 
+                                                    radius = cylinder_config[i, 7],
+                                                    length = cylinder_config[i, 8],
+                                                    rgbaColor = np.hstack([self.colors['yellow'], np.array([1.0])]))
+
+            obs_id = self.client_id.createMultiBody(baseMass = 0.,
+                                                    baseCollisionShapeIndex = cuid, 
+                                                    baseVisualShapeIndex = vuid, 
+                                                    basePosition = cylinder_config[i, :3], 
+                                                    baseOrientation = cylinder_config[i, 3:7])
             
             self.obs_ids.append(obs_id)
     
@@ -156,26 +259,26 @@ class RobotEnvironment:
 
         for link_index in range(0, 11):     # The 12th link (i.e. 11th index) is the grasp target and is not needed   
                 
-            # if link_index not in [8, 9]:    
+            if link_index not in [8, 9]:    
 
-                # link_name = self.link_index_to_name[link_index+1]
+                link_name = self.link_index_to_name[link_index+1]
 
-                # l, b, h = self.link_dimensions[link_name][0], self.link_dimensions[link_name][1], self.link_dimensions[link_name][2]
+                l, b, h = self.link_dimensions[link_name][0], self.link_dimensions[link_name][1], self.link_dimensions[link_name][2]
 
-                # if link_index == 7:
-                #     frame_pos, _ = self.client_id.getLinkState(self.manipulator, 7)[4:6]
-                #     _, frame_ori = self.client_id.getLinkState(self.manipulator, 10)[4:6]
-                # elif link_index != -1:
-                #     frame_pos, frame_ori = self.client_id.getLinkState(self.manipulator, link_index)[4:6]
-                # else:
-                #     frame_pos, frame_ori = self.client_id.getBasePositionAndOrientation(self.manipulator)
-                # world_transform = self.pose_to_transformation(np.array([*frame_pos, *frame_ori]))
+                if link_index == 7:
+                    frame_pos, _ = self.client_id.getLinkState(self.manipulator, 7)[4:6]
+                    _, frame_ori = self.client_id.getLinkState(self.manipulator, 10)[4:6]
+                elif link_index != -1:
+                    frame_pos, frame_ori = self.client_id.getLinkState(self.manipulator, link_index)[4:6]
+                else:
+                    frame_pos, frame_ori = self.client_id.getBasePositionAndOrientation(self.manipulator)
+                world_transform = self.pose_to_transformation(np.array([*frame_pos, *frame_ori]))
 
-                # link_dimensions = self.link_dimensions[link_name].copy()
-                # if link_index == 10:
-                #     link_dimensions[1] *= 4
+                link_dimensions = self.link_dimensions[link_name].copy()
+                if link_index == 10:
+                    link_dimensions[1] *= 4
 
-                # world_link_center = (world_transform @ np.vstack((np.expand_dims(self.link_centers[link_name], 1), 1)))[:-1, 0]
+                world_link_center = (world_transform @ np.vstack((np.expand_dims(self.link_centers[link_name], 1), 1)))[:-1, 0]
 
             vertices = np.array([[-l/2, -b/2, -h/2],
                                 [ l/2, -b/2, -h/2],
@@ -422,6 +525,7 @@ class RobotEnvironment:
             if all(np.abs(error) < 1e-2):
                 for _ in range(10):
                     self.client_id.stepSimulation()     # Give time to stop
+                    self.check_collisions()
                 return True, all_joints
             
             norm = np.linalg.norm(error)
@@ -438,6 +542,7 @@ class RobotEnvironment:
             )
 
             self.client_id.stepSimulation()
+            self.check_collisions()
 
         print(f"Warning: move_joints exceeded {timeout} second timeout. Skipping.")
 
@@ -447,13 +552,32 @@ class RobotEnvironment:
 
         self.move_joints(np.zeros((7,)))
 
+    def check_collisions(self):
+
+        # There are 12 links.
+
+        # Collision Info format:
+        # ((0, 0, 7, 6, -1, (0.6231421349501027, -0.20546030368880996, 0.4579269918307523), 
+        #   (0.6231421349501027, -0.20546030368881, 0.45900286827236414), (-4.511815760890017e-15, 2.2559078804450087e-14, -1.0), 
+        #   0.0010758764416118338, 5678.289055003103, 185.98474464217657, (0.0, 1.0, 2.2559078804450087e-14), 1407.3361669376961, 
+        #   (1.0, 1.0178240730107782e-28, -4.511815760890017e-15)),)
+
+        self.num_timesteps += 1
+
+        for obs_id in range(len(self.obs_ids)):
+
+            info = self.client_id.getContactPoints(self.manipulator, self.obs_ids[obs_id]) #, link_index)
+            if len(info) > 0:
+                self.num_collisions += 1
+                break
+    
     def execute_trajectory(self, trajectory):
 
         lower_limit = np.array([-2.8973000049591064, -1.7627999782562256, -2.8973000049591064, -3.0717999935150146, -2.8973000049591064, -0.017500000074505806, -2.8973000049591064])
         upper_limit = np.array([2.8973000049591064, 1.7627999782562256, 2.8973000049591064, -0.0697999969124794, 2.8973000049591064, 3.752500057220459, 2.8973000049591064])
 
         for i, joint_ind in enumerate(self.joints):
-            self.client_id.resetJointState(self.manipulator, joint_ind, trajectory[0, i])
+            self.client_id.resetJointState(self.manipulator, joint_ind, trajectory[i, 0])
 
         _ = input("Press Enter to execute trajectory")
 
@@ -471,6 +595,43 @@ class RobotEnvironment:
 
             self.move_joints(target_joints)
             self.client_id.stepSimulation()
+    
+    def benchmark_trajectory(self, trajectory, guide):
+
+        for i, joint_ind in enumerate(self.joints):
+            self.client_id.resetJointState(self.manipulator, joint_ind, trajectory[i, 0])
+
+        # _ = input("Press Enter to execute trajectory")
+
+        self.num_timesteps = 0
+        self.num_collisions = 0
+
+        dt = [0]
+
+        for i in range(1, trajectory.shape[-1]):
+            time.sleep(0.4)
+            target_joints = trajectory[:, i]
+
+            if any(target_joints <= self.joint_lower_limits) or any(target_joints >= self.joint_upper_limits):
+
+                print("Joint Limits Exceeded")
+
+            self.move_joints(target_joints)
+            self.client_id.stepSimulation()
+            self.check_collisions()
+            dt.append(self.num_timesteps * self.timestep)
+
+        dt = np.diff(dt, n=1)[:, np.newaxis]
+
+        collision_percentage = np.round((self.num_collisions / self.num_timesteps) * 100, 2)
+        success = 1 if self.num_collisions == 0 else 0
+
+        joint_smoothness, end_eff_smoothness = guide.smoothness_metric(trajectory, self.timestep)
+        joint_path_length, end_eff_path_length = guide.path_length_metric(trajectory)
+
+        return success, joint_path_length, end_eff_path_length, joint_smoothness[0], end_eff_smoothness[0]
+
+
 
         
 

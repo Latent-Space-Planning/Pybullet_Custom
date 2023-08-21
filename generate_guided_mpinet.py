@@ -12,10 +12,11 @@ traj_len = 50
 T = 255
 num_channels = 7
 
-scene_name = "two_blocks"
-example_number = 2
+mpinet_index = 22498
+# 7584 is failing
+data = 'val'
 
-obstacle_clearance = 0.15
+obstacle_clearance = np.linspace(0.01, 0.15, 255)
 
 model_name = "./diffusion_model/model_weights/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
 # --------------------------------------------------- #
@@ -25,20 +26,18 @@ if not os.path.exists(model_name):
     _ = input("Press anything to exit")
     exit()
 
-start_goal = np.load("scenes/" + scene_name + "/start_goals/example" + str(example_number) + ".npy")
-start_joints = start_goal[0]
-goal_joints = start_goal[1]
-
 # Load Models:
 env = RobotEnvironment()
 diffuser = Diffusion(T, device = device)
 denoiser = TemporalUNet(model_name = model_name, input_dim = num_channels, time_dim = 32, dims=(32, 64, 128, 256, 512, 512),
                         device = device)
 
-obstacle_config = np.load("scenes/" + scene_name + "/obstacle_config.npy")
+obstacle_config, cuboid_config, cylinder_config, start_joints, goal_joints = env.get_mpinet_scene(mpinet_index, data)
+
 guide = IntersectionVolumeGuide(env, obstacle_config, device, clearance = obstacle_clearance)
 
-env.spawn_cuboids(obstacle_config)
+env.spawn_cuboids(cuboid_config)
+env.spawn_cylinders(cylinder_config)
 
 os.system("clear")
 print("Environment and Model Loaded \n")
@@ -57,7 +56,7 @@ trajectory = diffuser.denoise_guided(model = denoiser,
 
 print("Denoising took " + str(np.round((time.time() - st_time), 2)) + " seconds")
 
-env.execute_trajectory(trajectory)
+env.execute_trajectory(trajectory[0])
 
 _ = input("Execution complete. Press Enter to Continue")
 np.save(trajectory, "traj.npy")

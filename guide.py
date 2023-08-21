@@ -7,7 +7,7 @@ import pybullet as p
 
 class IntersectionVolumeGuide:
 
-    def __init__(self, env, obstacle_config, device, clearance = 0.04):
+    def __init__(self, env, obstacle_config, device, clearance):
 
         self.env = env
         self.device = device
@@ -27,7 +27,7 @@ class IntersectionVolumeGuide:
                                   [0.0, 0.1034, 0, 0]], dtype = torch.float32, device = self.device)
         
         self.define_link_information()
-        self.define_obstacles(obstacle_config)
+        # self.define_obstacles(obstacle_config)
 
         self.rearrange_joints = Rearrange('batch channels traj_len -> batch traj_len channels')
     
@@ -85,12 +85,38 @@ class IntersectionVolumeGuide:
                 fk[:, :, i, :, :] = T
 
         return fk
+    
+    def get_end_effector_transform(self, joints):
 
-    def define_obstacles(self, obstacle_config):
+        # joints is (1, 50, 7) tensor
+
+        dh_params = torch.clone(self.static_dh_params)
+        dh_params = dh_params.unsqueeze(0).unsqueeze(0).repeat(joints.shape[0], joints.shape[1], 1, 1)
+        dh_params[:, :, :7, 3] = joints[:, :, :]
+        # dh_params is (1, 50, 10, 4)
+
+        T = torch.eye(4).unsqueeze(0).unsqueeze(0).repeat(joints.shape[0], joints.shape[1], 1, 1)
+        for i in range(10):
+            dh_matrix = self.get_tf_mat(dh_params[:, :, i, :]) 
+            # T is (batch, traj_len, 4, 4)
+            # dh_matrix is (batch, traj_len, 4, 4)
+            T = torch.matmul(T, dh_matrix)
+
+        return T        
+
+    def define_obstacles(self, obstacle_config, t):
 
         # Obstacle Config => (n, 10)
         
-        obstacle_sizes = torch.tensor(obstacle_config[:, 7:], dtype = torch.float32, device = self.device) + self.clearance
+        obstacle_sizes = np.array(obstacle_config[:, 7:])
+        if t > 20:
+            obstacle_sizes = np.maximum(obstacle_sizes, 0.2)
+
+        if t != 0:
+            obstacle_sizes = torch.tensor(obstacle_sizes, dtype = torch.float32, device = self.device) + self.clearance[t]
+        else:
+            obstacle_sizes = torch.tensor(obstacle_sizes, dtype = torch.float32, device = self.device)
+        
         obstacle_static_vertices = self.get_vertices(obstacle_sizes)
         # obstacle_static_vertices => (n, 4, 8)
 
@@ -257,12 +283,13 @@ class IntersectionVolumeGuide:
 
         return link_transform
     
-    def cost(self, joint_input):
+    def cost(self, joint_input, t):
 
         # joint_angles => (b, 7, n)
         # obs_min => (n, 3)
         # obs_max => (n, 3) 
-        
+        self.define_obstacles(self.obstacle_config, t)
+
         joints = self.rearrange_joints(joint_input)
         # Now joints is (batch, traj_len, 7)
         
@@ -297,23 +324,169 @@ class IntersectionVolumeGuide:
 
         volumes = torch.prod(torch.clamp(overlap_lengths, min = 0), dim = -1)
 
-        cost = torch.sum(volumes)
+        return volumes
+    
+    def get_gradient(self, joint_input, start, goal, t):
+
+        joint_tensor1 = torch.tensor(joint_input, dtype = torch.float32, device = self.device)
+        joint_tensor1.requires_grad = True
+        joint_tensor1.grad = None
+
+        # joint_tensor2 = torch.tensor(joint_input, dtype = torch.float32, device = self.device)
+        # joint_tensor2.requires_grad = True
+        # joint_tensor2.grad = None
+
+        cost = torch.sum(self.cost(joint_tensor1, t))
+        # smoothness_cost = self.smoothness_cost(joint_tensor2, start, goal)
+        cost.backward()
+        # smoothness_cost.backward()
+
+        gradient1 = joint_tensor1.grad.cpu().numpy()
+        # gradient2 = joint_tensor2.grad.cpu().numpy()
+
+        # if np.linalg.norm(gradient2) > 0:    
+        #     gradient2 = gradient2 / np.linalg.norm(gradient2)
+
+        return gradient1 #+ 0.1 * gradient2
+    
+    def choose_best_trajectory(self, trajectories):
+
+        joint_tensor = torch.tensor(trajectories, dtype = torch.float32, device = self.device)
+        overlap_volumes = torch.sum(self.cost(joint_tensor, 0), dim = (1, 2))
+        min_index = torch.argmin(overlap_volumes)
+
+        # print(overlap_volumes)
+        # print("best = ", overlap_volumes[min_index])
+
+        return trajectories[min_index]
+    
+    def smoothness_cost(self, joints, start, goal):
+
+        start = torch.tensor(start, dtype = torch.float32, device = self.device).view(1, 7, 1)
+        goal = torch.tensor(goal, dtype = torch.float32, device = self.device).view(1, 7, 1)
+
+        cost = torch.sum((joints[:, :, 0] - start)**2) + torch.sum((joints[:, :, 2:-1] - joints[:, :, 1:-2])**2) + torch.sum((goal - joints[:, :, -1])**2)
 
         return cost
     
-    def get_gradient(self, joint_input):
+    def smoothness_metric(self, joints, dt):
+        """
+        dt is time taken between each step
+        joints is (7, 50) numpy array
+        """
 
-        joint_tensor = torch.tensor(joint_input, dtype = torch.float32, device = self.device)
-        joint_tensor.requires_grad = True
-        joint_tensor.grad = None
 
-        cost = self.cost(joint_tensor)
-        cost.backward()
+        joint_tensor = self.rearrange_joints(torch.tensor(joints, dtype = torch.float32, device = self.device).unsqueeze(0))
+        end_eff_transforms = self.get_end_effector_transform(joint_tensor)
 
-        gradient = joint_tensor.grad.cpu().numpy()
+        end_eff_positions = (end_eff_transforms[0, :, :3, 3]).numpy(force=True)
+        # end_eff_positions is (50, 3) numpy array
 
-        return gradient
+        reshaped_joints = joints.T
+        # reshaped_joints is (50, 7) numpy array
+        joint_smoothness = np.linalg.norm(np.diff(reshaped_joints, n=1, axis=0) / dt, axis=1)
+        joint_smoothness = self.sparc(joint_smoothness, 1. / dt)
+        
+        end_eff_smoothness = np.linalg.norm(np.diff(end_eff_positions, n=1, axis=0) / dt, axis=1)
+        end_eff_smoothness = self.sparc(end_eff_smoothness, 1. / dt)
+
+        return joint_smoothness, end_eff_smoothness
     
+    def path_length_metric(self, joints):
+
+        joint_tensor = self.rearrange_joints(torch.tensor(joints, dtype = torch.float32, device = self.device).unsqueeze(0))
+        end_eff_transforms = self.get_end_effector_transform(joint_tensor)
+        end_eff_positions = (end_eff_transforms[0, :, :3, 3]).numpy(force=True)
+        # end_eff_positions is (50, 3) numpy array
+
+        reshaped_joints = joints.T
+
+        end_eff_path_length = np.sum(np.linalg.norm(np.diff(end_eff_positions, 1, axis=0), axis=1))
+        joint_path_length = np.sum(np.linalg.norm(np.diff(reshaped_joints, 1, axis=0), axis=1))
+
+        return joint_path_length, end_eff_path_length
+
+    def sparc(self, movement, fs, padlevel=4, fc=10.0, amp_th=0.05):
+        """
+        Calculates the smoothness of the given speed profile using the modified
+        spectral arc length metric.
+        Parameters
+        ----------
+        movement : np.array
+                The array containing the movement speed profile.
+        fs       : float
+                The sampling frequency of the data.
+        padlevel : integer, optional
+                Indicates the amount of zero padding to be done to the movement
+                data for estimating the spectral arc length. [default = 4]
+        fc       : float, optional
+                The max. cut off frequency for calculating the spectral arc
+                length metric. [default = 10.]
+        amp_th   : float, optional
+                The amplitude threshold to used for determing the cut off
+                frequency upto which the spectral arc length is to be estimated.
+                [default = 0.05]
+        Returns
+        -------
+        sal      : float
+                The spectral arc length estimate of the given movement's
+                smoothness.
+        (f, Mf)  : tuple of two np.arrays
+                This is the frequency(f) and the magntiude spectrum(Mf) of the
+                given movement data. This spectral is from 0. to fs/2.
+        (f_sel, Mf_sel) : tuple of two np.arrays
+                        This is the portion of the spectrum that is selected for
+                        calculating the spectral arc length.
+        Notes
+        -----
+        This is the modfieid spectral arc length metric, which has been tested only
+        for discrete movements.
+
+        Examples
+        --------
+        >>> t = np.arange(-1, 1, 0.01)
+        >>> move = np.exp(-5*pow(t, 2))
+        >>> sal, _, _ = sparc(move, fs=100.)
+        >>> '%.5f' % sal
+        '-1.41403'
+        """
+        if np.allclose(movement, 0):
+            print("All movement was 0, returning 0")
+            return 0, None, None
+        # Number of zeros to be padded.
+        nfft = int(pow(2, np.ceil(np.log2(len(movement))) + padlevel))
+
+        # Frequency
+        f = np.arange(0, fs, fs / nfft)
+        # Normalized magnitude spectrum
+        Mf = abs(np.fft.fft(movement, nfft))
+        Mf = Mf / max(Mf)
+
+        # Indices to choose only the spectrum within the given cut off frequency
+        # Fc.
+        # NOTE: This is a low pass filtering operation to get rid of high frequency
+        # noise from affecting the next step (amplitude threshold based cut off for
+        # arc length calculation).
+        fc_inx = ((f <= fc) * 1).nonzero()
+        f_sel = f[fc_inx]
+        Mf_sel = Mf[fc_inx]
+
+        # Choose the amplitude threshold based cut off frequency.
+        # Index of the last point on the magnitude spectrum that is greater than
+        # or equal to the amplitude threshold.
+        inx = ((Mf_sel >= amp_th) * 1).nonzero()[0]
+        fc_inx = range(inx[0], inx[-1] + 1)
+        f_sel = f_sel[fc_inx]
+        Mf_sel = Mf_sel[fc_inx]
+
+        # Calculate arc length
+        new_sal = -sum(
+            np.sqrt(
+                pow(np.diff(f_sel) / (f_sel[-1] - f_sel[0]), 2) + pow(np.diff(Mf_sel), 2)
+            )
+        )
+        return new_sal, (f, Mf), (f_sel, Mf_sel)
+
 
 
 

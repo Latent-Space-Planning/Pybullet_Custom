@@ -275,15 +275,17 @@ class Diffusion(Gaussian):
 
         return X_t[0]
     
-    def denoise_guided(self, model, guide, traj_len, num_channels, start = None, goal = None, condition = True):
+    def denoise_guided(self, model, guide, traj_len, num_channels, batch_size = 1, start = None, goal = None, condition = True):
         
-        X_t = np.random.multivariate_normal(mean = np.zeros(traj_len), cov = np.eye(traj_len), size = (1, num_channels))
+        X_t = np.random.multivariate_normal(mean = np.zeros(traj_len), cov = np.eye(traj_len), size = (batch_size, num_channels))
 
         if condition:
             X_t[:, :, 0] = start[:]
             X_t[:, :, -1] = goal[:]
 
-        model.train(False)
+        model.train(False) 
+
+        period = 2
 
         for t in range(self.T, 0, -1):
 
@@ -294,18 +296,23 @@ class Diffusion(Gaussian):
 
             X_t = self.p_sample_using_posterior(X_t, t, epsilon)
 
-            if t != 1:
-                clipped_joints = guide.env.clip_joints(X_t[:, :, 1:-1])
-                gradient = guide.get_gradient(clipped_joints)
-                X_t[:, :, 1:-1] = X_t[:, :, 1:-1] - 2.2 * gradient
+            if (t%period) < (period/2):
+                if t >= 5:
+                    clipped_joints = guide.env.clip_joints(X_t[:, :, 1:-1])
+                    gradient = guide.get_gradient(clipped_joints, start[:], goal[:], t)
+                    X_t[:, :, 1:-1] = X_t[:, :, 1:-1] - (1.4 + (t/self.T)) * gradient
+
+                # weight = np.clip(np.log(1+((t-2)/self.T)*(np.exp(1) - 1)), 0.005, 1) * 2.2
+                # X_t[:, :, 1:-1] = X_t[:, :, 1:-1] - weight * gradient
+                # X_t[:, :, 1:-1] = X_t[:, :, 1:-1] - 2. * gradient
 
             if condition:
                 X_t[:, :, 0] = start[:]
                 X_t[:, :, -1] = goal[:]
 
-            print("\rDenoised " + str(t-1) + " timesteps", end="", flush=True)
+            # print("\rDenoised " + str(t-1) + " timesteps", end="", flush=True)
 
-        return X_t[0]
+        return X_t.copy()
 
 
 
