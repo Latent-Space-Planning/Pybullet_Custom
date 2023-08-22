@@ -94,7 +94,7 @@ class TemporalUNet(nn.Module):
     def load(self):
 
         self.losses = np.load(self.model_name + "/losses.npy")
-        self.load_state_dict(torch.load(self.model_name + "/weights_latest.pt"))
+        self.load_state_dict(torch.load(self.model_name + "/weights_latest.pt"))# "/weights_28000.pt"))#"/weights_latest.pt"))
         print("Loaded Model at " + str(self.losses.size) + " epochs")
 
     def load_checkpoint(self, checkpoint):

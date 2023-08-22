@@ -493,7 +493,7 @@ def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda,
 
     # -------------- Edit these parameters -------------- #
     traj_len = 50   
-    T = 255 #255 # 5
+    T = 255 # 128 #255 # 5
     batch_size = 25
 
     beta = schedule_variance(T)
@@ -503,11 +503,11 @@ def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda,
     mean = np.zeros(traj_len)
     cov = np.eye(traj_len)
 
-    obstacle_centers = [torch.tensor(arr) for arr in obstacle_centers]   #comment this when using calc_gradients fn 
+    # obstacle_centers = [torch.tensor(arr) for arr in obstacle_centers]   #comment this when using calc_gradients fn 
 
     xT_batch = np.random.multivariate_normal(mean, cov, (batch_size, 7))    #(B, 7, 50)
     X_t_batch = xT_batch.copy()
-    xT_batch = torch.tensor(xT_batch, dtype=torch.float, requires_grad=True)   #comment this when using calc_gradients fn  
+    # xT_batch = torch.tensor(xT_batch, dtype=torch.float, requires_grad=True)   #comment this when using calc_gradients fn  
 
     # CONDITIONING:
     rest_poses = np.array([-0.00029003781167199756, -0.10325848749542864, 0.00020955647419784322,
@@ -520,7 +520,7 @@ def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda,
     reverse_diff_traj_batch[T] = einops.rearrange(X_t_batch, 'b c n ->b n c').copy()
 
     denoiser.train(False)
-    fwd_kinematics = Torch_fwd_kinematics_Panda()   #comment this when using calc_gradients fn  
+    # fwd_kinematics = Torch_fwd_kinematics_Panda()   #comment this when using calc_gradients fn  
 
     # st_time = time.time()
     # print("bo")
@@ -541,11 +541,11 @@ def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda,
         # st_time = time.time()
         # epsilon_classifier = calc_gradients(obstacle_centers, X_t_batch, client_id, panda, panda_joints)
         # epsilon_classifier = calc_gradients_batch_torch_kinematics(obstacle_centers, X_t_batch, client_id, panda, panda_joints)
-        calc_gradients_batch_torch_kinematics(obstacle_centers, xT_batch, client_id, panda, panda_joints, fwd_kinematics)
+        # calc_gradients_batch_torch_kinematics(obstacle_centers, xT_batch, client_id, panda, panda_joints, fwd_kinematics)
         # print(f"calc grad total time: {time.time() - st_time}")
 
 
-        epsilon_classifier = torch.clip(xT_batch.grad, -1, 1)       #comment this when using calc_gradients fn  
+        # epsilon_classifier = torch.clip(xT_batch.grad, -1, 1)       #comment this when using calc_gradients fn  
         # Most of the elements are zero here. Shouldnt be.
 
         # cl_weightage = np.clip(np.log(1+((t-2)/T)*(np.exp(1) - 1)), 0.005, 1) # np.clip((t/T) * 0.1, 0.001, 1) # np.clip((1 - t/T), 0.01, 1) * 0.1
@@ -555,7 +555,7 @@ def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda,
             cl_weightage = 0.001   #0.00001
 
         # cl_weightage = 100
-        X_t_batch = (1/np.sqrt(alpha[t-1])) * (X_t_batch - ((1 - alpha[t-1])/(np.sqrt(1 - alpha_bar[t-1]))) * epsilon) + beta[t-1]*z + cl_weightage*epsilon_classifier.numpy()
+        X_t_batch = (1/np.sqrt(alpha[t-1])) * (X_t_batch - ((1 - alpha[t-1])/(np.sqrt(1 - alpha_bar[t-1]))) * epsilon) + beta[t-1]*z #+ cl_weightage*epsilon_classifier.numpy()
         
         # CONDITIONING:
         X_t_batch[:, :, 0] = q0 # start[:] # rest_poses # start[:]  -- broadcasting
@@ -564,8 +564,8 @@ def infer_guided_batch(denoiser, q0, target, obstacle_centers, client_id, panda,
         reverse_diff_traj_batch[t-1] = einops.rearrange(X_t_batch, 'b c n -> b n c').copy()
         
          #comment below when using calc_gradients fn  
-        xT_batch.detach()
-        xT_batch = torch.Tensor(X_t_batch)
+        # xT_batch.detach()
+        # xT_batch = torch.Tensor(X_t_batch)
 
     print("Done!!!")
     return reverse_diff_traj_batch[0]

@@ -9,7 +9,7 @@ import torch
 import os
 from diffusion.Models.temporalunet import TemporalUNet
 from diffusion.infer_diffusion import infer, infer_guided
-sys.path.append('/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/Latent_Space_Organization/Mpinet_Environment/')
+# sys.path.append('/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/Latent_Space_Organization/Mpinet_Environment/')
 
 
 class PandaEnv:

@@ -252,6 +252,34 @@ def generate_collision_course_gjk(client_id):
 
     return obstacle_centers, q0, qTarget, st_pos, end_pos
 
+def generate_collision_course_kallol_two_blocks(client_id, scene_num):
+    '''
+    scene_num: 1 or 2
+    '''
+
+def generate_collision_course_kallol_one_block(client_id):
+    '''
+    '''
+    obs_config = np.load("/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/Latent_Space_Organization/Pybullet_Custom/scenes_kallol/one_block_scene1/obstacle_config.npy")[0]
+    st_gl_config = np.load("/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/Latent_Space_Organization/Pybullet_Custom/scenes_kallol/one_block_scene1/example1.npy")
+
+    obs_xyz = obs_config[:3]
+    obs_quat = obs_config[3:7]
+    obs_dims = obs_config[7:]
+
+    sphereRadius = max(obs_dims)/2
+
+    q0 = st_gl_config[0]
+    qTarget = st_gl_config[1]
+
+    colVizshape = client_id.createVisualShape(p.GEOM_SPHERE, radius=sphereRadius, rgbaColor=[1, 1, 0, 1])
+    obstacle_center = obs_xyz
+    obstacle_centers.append(obstacle_center)
+    colSph = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=colVizshape, basePosition=obstacle_center, baseOrientation=obs_quat)
+
+    
+
+
 obstacle_centers, q0, qTarget, st_pos, end_pos = generate_collision_course3(client_id=client_id)
 
 sphereRadius = 0.05
@@ -266,9 +294,10 @@ outViz = client_id.createMultiBody(baseMass=0, baseVisualShapeIndex=outVizshape,
 # Inferring from Diffusion
 device = "cuda" if torch.cuda.is_available() else "cpu"
 traj_len=50
-T = 255  #255
+T = 255 # 128  #255
 # model_name = "/home/jayaram/research/research_tracks/table_top_rearragement/global_classifier_guidance_for_7DOF_manipulator/diffuser_ckpts_7dof_mpinets/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
-model_name = "/home/jayaram/research/research_tracks/table_top_rearragement/global_classifier_guidance_for_7DOF_manipulator/diffuser_ckpts_7dof_mpinets/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
+# model_name = "/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/Latent_Space_Organization/Pybullet_Custom/diffusion/checkpoints/mpinet_models/Model_weights/7dof128/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
+model_name = "/home/vishal/Volume_E/Active/Undergrad_research/CoRL2023/Latent_Space_Organization/Pybullet_Custom/diffusion/checkpoints/7dof/" + "TemporalUNetModel" + str(T) + "_N" + str(traj_len)
 if not os.path.exists(model_name):
     print("Model does not exist for these parameters. Train a model first.")
     _ = input("Press anything to exit")
@@ -305,7 +334,7 @@ st_time = time.time()
 trajectory_batch = infer_guided_batch(denoiser, q0, qTarget, obstacle_centers, client_id, panda, panda_joints)     #(B, 50, 7)
 
 print('unguided_multimodality_trajs shape: {}'.format(trajectory_batch.shape))
-file_name = "unguided_multimodality_trajs_without_goal_conditioning_64.npy"
+file_name = "unguided_multimodality_trajs_without_goal_conditioning_128.npy"
 np.save(file_name, trajectory_batch)
 
 end_time = time.time()
@@ -323,7 +352,7 @@ stacked_trajectories = np.vstack(reshaped_trajectories)
 # Calculate cosine similarity matrix
 cosine_sim_matrix = cosine_similarity(stacked_trajectories)
 print('cosine_sim_matrix shape: {}'.format(trajectory_batch.shape))
-file_name = "cosine_sim_matrix_without_goal_conditioning_64.npy"
+file_name = "cosine_sim_matrix_without_goal_conditioning_128.npy"
 np.save(file_name, cosine_sim_matrix)
 
 for b in range(trajectory_batch.shape[0]):
